@@ -1,11 +1,67 @@
 #pragma once
 
+#include <list>
+#include <unordered_map>
+
 #include <BS_thread_pool.hpp>
 #include <efsw/efsw.hpp>
 
 static constexpr REL::Version SHADER_CACHE_VERSION = { 0, 0, 0, 30 };
 
 using namespace std::chrono;
+
+/*
+ * Least Recently Used Cache for managing shader cache
+ */
+template <typename Key, typename Value>
+class LRUCache {
+	public:
+		explicit LRUCache(size_t maxEntries) : _maxEntries(maxEntries) {}
+
+		// Returns a pointer to the value if it exists, otherwise returns nullptr
+		Value* get(const Key& k) {
+			auto it = _map.find(k);
+			if (it == _map.end()) return nullptr;
+			// Move key to front of usage list
+			_usage.splice(_usage.begin(), _usage, it->second.second);
+			return &it->second.first;
+		}
+
+		// Insert or update an entry
+		void put(const Key& k, Value v) {
+			auto it = _map.find(k);
+			if (it != _map.end()) {
+				// Overwrite value, bump usage
+				it->second.first = std::move(v);
+				_usage.splice(_usage.begin(), _usage, it->second.second);
+			} else {
+				// New insert
+				_usage.push_front(k);
+				_map.emplace(k, std::make_pair(std::move(v), _usage.begin()));
+				if (_map.size() > _maxEntries) {
+					auto last = _usage.back();
+					_map.erase(last);
+					_usage.pop_back();
+				}
+			}
+		}
+
+		void clear() {
+			_map.clear();
+			_usage.clear();
+		}
+
+		void set_capacity(size_t cap) {
+			_maxEntries = cap;
+			// Could evict here if _map.size() > _maxEntries
+		}
+
+	private:
+		size_t _maxEntries;
+		std::list<Key> _usage;
+		// map: key -> (value, iterator into _usage)
+		std::unordered_map<Key, std::pair<Value, typename std::list<Key>::iterator>> _map;
+};
 
 namespace ShaderConstants
 {
@@ -675,6 +731,13 @@ namespace SIE
 		std::mutex modifiedMapMutex;                                                    // guard for modifiedShaderMap
 		std::unordered_map<std::string, std::set<hlslRecord>> hlslToShaderMap{};        // hashmap linking specific hlsl files to shader keys in shaderMap
 		std::mutex hlslMapMutex;                                                        // guard for hlslToShaderMap
+
+		// LRU Cache
+		LRUCache<std::string, ShaderCacheResult> shaderMap;
+		// Cache size limits - Disk and Memory
+		int maxMemCacheSize = 1024;  // in MB
+		int maxDiskCacheSize = 1024; // in MB
+
 
 		// efsw file watcher
 		efsw::FileWatcher* fileWatcher = nullptr;
