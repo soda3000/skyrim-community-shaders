@@ -16,6 +16,14 @@
 #include "TruePBR.h"
 #include "Upscaling.h"
 
+/**
+ * @brief Handles the main drawing operations for the shader system
+ * 
+ * This function manages the rendering pipeline by setting up shader resources,
+ * updating permutation buffers, handling shader descriptors, and managing
+ * draw call statistics. It coordinates between various rendering features
+ * like terrain blending, cloud shadows, and deferred rendering.
+ */
 void State::Draw()
 {
 	auto shaderCache = globals::shaderCache;
@@ -115,6 +123,13 @@ void State::Draw()
 	}
 }
 
+/**
+ * @brief Resets the state for a new frame
+ * 
+ * This function resets all features, updates the timer if the game is not paused,
+ * clears descriptor states, and increments the frame counter. It prepares the
+ * system for the next frame of rendering.
+ */
 void State::Reset()
 {
 	for (auto* feature : Feature::GetFeatureList())
@@ -131,6 +146,14 @@ void State::Reset()
 	frameCount++;
 }
 
+/**
+ * @brief Sets up resources and initializes the rendering system
+ * 
+ * This function initializes TruePBR resources, sets up general resources,
+ * initializes all loaded features, sets up deferred rendering resources,
+ * creates upscaling resources if needed, and sets up ReShade integration.
+ * It ensures the system is properly initialized before rendering begins.
+ */
 void State::Setup()
 {
 	globals::truePBR->SetupResources();
@@ -147,6 +170,12 @@ void State::Setup()
 	initialized = true;
 }
 
+/**
+ * @brief Gets the configuration file path based on the specified mode
+ * 
+ * @param a_configMode The configuration mode (USER, TEST, or DEFAULT)
+ * @return const std::string& Reference to the appropriate configuration file path
+ */
 static const std::string& GetConfigPath(State::ConfigMode a_configMode)
 {
 	switch (a_configMode) {
@@ -160,6 +189,18 @@ static const std::string& GetConfigPath(State::ConfigMode a_configMode)
 	}
 }
 
+/**
+ * @brief Loads configuration settings from the specified config file
+ * 
+ * This function attempts to load configuration settings from the specified
+ * config mode file. If the file doesn't exist or is corrupted, it falls back
+ * to the default configuration. It loads settings for menu, advanced options,
+ * general settings, shader classes, disabled features, upscaling, and all
+ * registered features.
+ * 
+ * @param a_configMode The configuration mode to load (USER, TEST, or DEFAULT)
+ * @param a_allowReload Whether to allow reloading if errors are detected
+ */
 void State::Load(ConfigMode a_configMode, bool a_allowReload)
 {
 	ConfigMode configMode = a_configMode;
@@ -341,6 +382,15 @@ void State::Load(ConfigMode a_configMode, bool a_allowReload)
 		Load(a_configMode, false);
 }
 
+/**
+ * @brief Saves current configuration settings to the specified config file
+ * 
+ * This function serializes all current settings including menu configuration,
+ * advanced options, general settings, shader class states, disabled features,
+ * upscaling settings, and feature-specific configurations to a JSON file.
+ * 
+ * @param a_configMode The configuration mode to save to (USER, TEST, or DEFAULT)
+ */
 void State::Save(ConfigMode a_configMode)
 {
 	const auto shaderCache = globals::shaderCache;
@@ -410,6 +460,13 @@ void State::Save(ConfigMode a_configMode)
 	}
 }
 
+/**
+ * @brief Performs post-loading operations after all features are loaded
+ * 
+ * This function is called after the main loading process is complete to
+ * perform any final initialization steps that require all features to be
+ * fully loaded and configured.
+ */
 void State::PostPostLoad()
 {
 	upscalerLoaded = GetModuleHandle(L"Data\\SKSE\\Plugins\\SkyrimUpscaler.dll");
@@ -420,6 +477,15 @@ void State::PostPostLoad()
 	// No hooks should be here, hook in XSEPlugin::MessageHandler()
 }
 
+/**
+ * @brief Validates the disk cache configuration
+ * 
+ * This function checks if the current system configuration matches the
+ * cached configuration to determine if the disk cache is still valid.
+ * 
+ * @param a_ini Reference to the INI configuration object
+ * @return bool True if the cache is valid, false otherwise
+ */
 bool State::ValidateCache(CSimpleIniA& a_ini)
 {
 	bool valid = true;
@@ -428,12 +494,28 @@ bool State::ValidateCache(CSimpleIniA& a_ini)
 	return valid;
 }
 
+/**
+ * @brief Writes disk cache information to the configuration
+ * 
+ * This function stores current system information to the disk cache
+ * configuration for future validation purposes.
+ * 
+ * @param a_ini Reference to the INI configuration object to write to
+ */
 void State::WriteDiskCacheInfo(CSimpleIniA& a_ini)
 {
 	for (auto* feature : Feature::GetFeatureList())
 		feature->WriteDiskCacheInfo(a_ini);
 }
 
+/**
+ * @brief Sets the logging level for the application
+ * 
+ * This function updates the global logging level and applies it to
+ * all active loggers in the system.
+ * 
+ * @param a_level The new logging level to set
+ */
 void State::SetLogLevel(spdlog::level::level_enum a_level)
 {
 	logLevel = a_level;
@@ -442,11 +524,25 @@ void State::SetLogLevel(spdlog::level::level_enum a_level)
 	logger::info("Log Level set to {} ({})", magic_enum::enum_name(logLevel), static_cast<int>(logLevel));
 }
 
+/**
+ * @brief Gets the current logging level
+ * 
+ * @return spdlog::level::level_enum The current logging level
+ */
 spdlog::level::level_enum State::GetLogLevel()
 {
 	return logLevel;
 }
 
+/**
+ * @brief Sets shader defines from a string
+ * 
+ * This function parses a string containing shader defines and stores them
+ * in the internal defines collection. The defines are used during shader
+ * compilation to control conditional compilation.
+ * 
+ * @param a_defines String containing shader defines in the format "DEFINE1=value1;DEFINE2=value2"
+ */
 void State::SetDefines(std::string a_defines)
 {
 	shaderDefines.clear();
@@ -474,11 +570,25 @@ void State::SetDefines(std::string a_defines)
 	logger::debug("Shader Defines set to {}", shaderDefinesString);
 }
 
+/**
+ * @brief Gets the current shader defines
+ * 
+ * @return std::vector<std::pair<std::string, std::string>>* Pointer to the vector of shader defines
+ */
 std::vector<std::pair<std::string, std::string>>* State::GetDefines()
 {
 	return &shaderDefines;
 }
 
+/**
+ * @brief Checks if a specific shader type is enabled
+ * 
+ * This function determines whether shaders of the specified type should
+ * be processed and replaced by the community shaders system.
+ * 
+ * @param a_type The shader type to check
+ * @return bool True if the shader type is enabled, false otherwise
+ */
 bool State::ShaderEnabled(const RE::BSShader::Type a_type)
 {
 	auto index = static_cast<uint32_t>(a_type) + 1;
@@ -488,22 +598,54 @@ bool State::ShaderEnabled(const RE::BSShader::Type a_type)
 	return false;
 }
 
+/**
+ * @brief Checks if a specific shader instance is enabled
+ * 
+ * This function checks if the given shader should be processed based on
+ * its type and the current shader replacement settings.
+ * 
+ * @param a_shader Reference to the shader to check
+ * @return bool True if the shader is enabled, false otherwise
+ */
 bool State::IsShaderEnabled(const RE::BSShader& a_shader)
 {
 	return ShaderEnabled(a_shader.shaderType.get());
 }
 
+/**
+ * @brief Checks if developer mode is enabled
+ * 
+ * Developer mode enables additional debugging features and logging.
+ * 
+ * @return bool True if developer mode is enabled, false otherwise
+ */
 bool State::IsDeveloperMode()
 {
 	return GetLogLevel() <= spdlog::level::debug;
 }
 
+/**
+ * @brief Modifies render target properties
+ * 
+ * This function allows modification of render target properties before
+ * they are created, enabling features to customize rendering surfaces.
+ * 
+ * @param a_target The render target identifier
+ * @param a_properties Pointer to the render target properties to modify
+ */
 void State::ModifyRenderTarget(RE::RENDER_TARGETS::RENDER_TARGET a_target, RE::BSGraphics::RenderTargetProperties* a_properties)
 {
 	a_properties->supportUnorderedAccess = true;
 	logger::debug("Adding UAV access to {}", magic_enum::enum_name(a_target));
 }
 
+/**
+ * @brief Sets up DirectX resources and constant buffers
+ * 
+ * This function creates and initializes the constant buffers used for
+ * shader permutations, shared data, and feature-specific data. It also
+ * sets up any other DirectX resources required by the system.
+ */
 void State::SetupResources()
 {
 	for (auto& c : drawCalls)
@@ -532,6 +674,18 @@ void State::SetupResources()
 	tracyCtx = TracyD3D11Context(globals::d3d::device, globals::d3d::context);
 }
 
+/**
+ * @brief Modifies shader lookup descriptors based on current state
+ * 
+ * This function analyzes the current rendering state and modifies the
+ * vertex and pixel shader descriptors accordingly. It handles deferred
+ * rendering, feature-specific modifications, and other shader variations.
+ * 
+ * @param a_shader Reference to the shader being processed
+ * @param a_vertexDescriptor Reference to the vertex shader descriptor to modify
+ * @param a_pixelDescriptor Reference to the pixel shader descriptor to modify
+ * @param a_forceDeferred Whether to force deferred rendering mode
+ */
 void State::ModifyShaderLookup(const RE::BSShader& a_shader, uint& a_vertexDescriptor, uint& a_pixelDescriptor, bool a_forceDeferred)
 {
 	auto deferred = globals::deferred;
@@ -641,27 +795,66 @@ void State::ModifyShaderLookup(const RE::BSShader& a_shader, uint& a_vertexDescr
 	}
 }
 
+/**
+ * @brief Begins a performance event for profiling
+ * 
+ * This function starts a named performance event that can be viewed in
+ * graphics debugging tools like PIX or RenderDoc.
+ * 
+ * @param title The name of the performance event
+ */
 void State::BeginPerfEvent(std::string_view title)
 {
 	pPerf->BeginEvent(std::wstring(title.begin(), title.end()).c_str());
 }
 
+/**
+ * @brief Ends the current performance event
+ * 
+ * This function closes the most recently opened performance event.
+ */
 void State::EndPerfEvent()
 {
 	pPerf->EndEvent();
 }
 
+/**
+ * @brief Sets a performance marker
+ * 
+ * This function places a marker in the graphics command stream that can
+ * be viewed in debugging tools for performance analysis.
+ * 
+ * @param title The text for the performance marker
+ */
 void State::SetPerfMarker(std::string_view title)
 {
 	pPerf->SetMarker(std::wstring(title.begin(), title.end()).c_str());
 }
 
+/**
+ * @brief Sets the graphics adapter description
+ * 
+ * This function stores the description of the current graphics adapter
+ * for logging and configuration purposes.
+ * 
+ * @param description The wide string description of the graphics adapter
+ */
 void State::SetAdapterDescription(const std::wstring& description)
 {
 	std::wstring_convert<std::codecvt_utf8<wchar_t>> converter;
 	adapterDescription = converter.to_bytes(description);
 }
 
+/**
+ * @brief Updates shared data constant buffer
+ * 
+ * This function updates the shared data constant buffer with current
+ * frame information, camera data, lighting parameters, and other
+ * per-frame data that needs to be accessible to shaders.
+ * 
+ * @param a_inWorld Whether the rendering is happening in the game world
+ * @param a_prepass Whether this is a depth prepass rendering
+ */
 void State::UpdateSharedData(bool a_inWorld, bool a_prepass)
 {
 	{
@@ -745,11 +938,27 @@ void State::UpdateSharedData(bool a_inWorld, bool a_prepass)
 	globals::d3d::context->PSSetShaderResources(17, 1, &srv);
 }
 
+/**
+ * @brief Clears all disabled features
+ * 
+ * This function removes all entries from the disabled features list,
+ * effectively enabling all features.
+ */
 void State::ClearDisabledFeatures()
 {
 	disabledFeatures.clear();
 }
 
+/**
+ * @brief Sets the disabled state of a specific feature
+ * 
+ * This function enables or disables a feature by name. The change affects
+ * whether the feature will be loaded and active in the system.
+ * 
+ * @param featureName The name of the feature to modify
+ * @param isDisabled True to disable the feature, false to enable it
+ * @return bool True if the feature state was changed, false if no change occurred
+ */
 bool State::SetFeatureDisabled(const std::string& featureName, bool isDisabled)
 {
 	bool wasPreviouslyDisabled = disabledFeatures.count(featureName) > 0 ? disabledFeatures[featureName] : false;  // Properly check if it exists
@@ -765,16 +974,38 @@ bool State::SetFeatureDisabled(const std::string& featureName, bool isDisabled)
 	return disabledFeatures[featureName];  // Return the current state instead of the input parameter
 }
 
+/**
+ * @brief Checks if a specific feature is disabled
+ * 
+ * This function queries whether a feature is currently disabled.
+ * 
+ * @param featureName The name of the feature to check
+ * @return bool True if the feature is disabled, false if it's enabled
+ */
 bool State::IsFeatureDisabled(const std::string& featureName)
 {
 	return disabledFeatures.contains(featureName) && disabledFeatures[featureName];
 }
 
+/**
+ * @brief Gets a reference to the disabled features map
+ * 
+ * This function provides direct access to the internal map of disabled
+ * features for advanced manipulation or iteration.
+ * 
+ * @return std::unordered_map<std::string, bool>& Reference to the disabled features map
+ */
 std::unordered_map<std::string, bool>& State::GetDisabledFeatures()
 {
 	return disabledFeatures;
 }
 
+/**
+ * @brief Sets up ReShade integration
+ * 
+ * This function initializes ReShade integration if available, setting up
+ * the necessary hooks and resources for post-processing effects.
+ */
 void State::SetupReShade()
 {
 	SetEnvironmentVariableW(L"RESHADE_DISABLE_GRAPHICS_HOOK", L"1");
@@ -797,7 +1028,6 @@ void State::SetupReShade()
 		reShadeDevice->create_resource_view(reShadeSwapChainResource, reshade::api::resource_usage::render_target, reshade::api::resource_view_desc(reshade::api::format_to_default_typed(reShadeSwapChainDesc.texture.format, 1), 0, 1, 0, 1), &reshadeSwapChainRTVsRGB);
 
 		auto& depth = globals::game::renderer->GetDepthStencilData().depthStencils[RE::RENDER_TARGETS_DEPTHSTENCIL::kPOST_ZPREPASS_COPY];
-
 		auto depthRTV = reshade::api::resource_view{ reinterpret_cast<uintptr_t>(depth.depthSRV) };
 		reShadeRuntime->update_texture_bindings("DEPTH", depthRTV, depthRTV);
 
@@ -810,6 +1040,12 @@ void State::SetupReShade()
 	}
 }
 
+/**
+ * @brief Renders ReShade effects
+ * 
+ * This function triggers the rendering of ReShade post-processing effects
+ * during the appropriate point in the rendering pipeline.
+ */
 void State::RenderReShade()
 {
 	if (reShadeRuntime) {
@@ -817,6 +1053,12 @@ void State::RenderReShade()
 	}
 }
 
+/**
+ * @brief Presents ReShade effects to the screen
+ * 
+ * This function handles the final presentation of ReShade effects,
+ * typically called during the swap chain present operation.
+ */
 void State::PresentReShade()
 {
 	reshade::update_and_present_effect_runtime(reShadeRuntime);
