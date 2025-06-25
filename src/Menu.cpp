@@ -117,6 +117,7 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
 	GlobalScale,
 	UseSimplePalette,
 	ShowActionIcons,
+	ToolTipDelaySeconds,
 	Palette,
 	StatusPalette,
 	FeatureHeading,
@@ -141,8 +142,10 @@ void Menu::SetupImGuiStyle() const
 
 	// rescale here
 	auto styleCopy = themeSettings.Style;
-	styleCopy.ScaleAllSizes(exp2(settings.Theme.GlobalScale));
+	styleCopy.ScaleAllSizes(exp2(themeSettings.GlobalScale));
 	styleCopy.MouseCursorScale = 1.f;
+	styleCopy.HoverDelayNormal = themeSettings.ToolTipDelaySeconds;
+	styleCopy.HoverDelayShort = themeSettings.ToolTipDelaySeconds * 0.5f;
 	style = styleCopy;
 
 	if (themeSettings.UseSimplePalette) {
@@ -1230,8 +1233,17 @@ void Menu::DrawGeneralSettings()
 				ImGui::Checkbox("Use Icon Buttons in Header", &themeSettings.ShowActionIcons);
 				if (auto _tt = Util::HoverTooltipWrapper()) {
 					ImGui::Text(
-						"When enabled: Shows action buttons (Save, Load, Clear Cache, Clear Disk Cache) as icons in the header\n"
+						"When enabled: Shows action buttons as icons in the header\n"
 						"When disabled: Shows as text buttons below the header");
+				}
+
+				ImGui::SeparatorText("Tooltips");
+				ImGui::SliderFloat(
+					"Tooltip Delay (s)",
+					&themeSettings.ToolTipDelaySeconds,
+					0.0f, 2.0f, "%.2f");
+				if (auto _tt = Util::HoverTooltipWrapper()) {
+					ImGui::Text("How long to hover before showing the tooltip");
 				}
 
 				ImGui::EndTabItem();
