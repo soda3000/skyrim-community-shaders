@@ -11,6 +11,7 @@
 #include "Globals.h"
 #include "Menu.h"
 #include "Menu/ThemeManager.h"
+#include "LocalizationMacros.h"
 #include "SettingsOverrideManager.h"
 #include "State.h"
 #include "Util.h"
@@ -101,7 +102,7 @@ std::vector<FeatureListRenderer::MenuFuncInfo> FeatureListRenderer::BuildMenuLis
 			}
 
 			// Add category header
-			menuList.push_back(CategoryHeader{ category });
+			menuList.push_back(CategoryHeader{ TR("menu.sidebar.category." + category) });
 
 			// Add features only if category is expanded
 			if (categoryExpansionStates[category]) {
@@ -119,7 +120,7 @@ std::vector<FeatureListRenderer::MenuFuncInfo> FeatureListRenderer::BuildMenuLis
 			}
 
 			// Add category header
-			menuList.push_back(CategoryHeader{ category });
+			menuList.push_back(CategoryHeader{ TR("menu.sidebar.category." + category) });
 
 			// Add features only if category is expanded
 			if (categoryExpansionStates[category]) {
@@ -132,12 +133,12 @@ std::vector<FeatureListRenderer::MenuFuncInfo> FeatureListRenderer::BuildMenuLis
 		return !feat->loaded && feat->IsInMenu() && (!FeatureIssues::IsObsoleteFeature(feat->GetShortName()) || globals::state->IsDeveloperMode());
 	});
 	if (std::ranges::distance(unloadedFeatures) != 0) {
-		menuList.push_back("Unloaded Features"s);
+		menuList.push_back(TR("menu.sidebar.unloaded_features_header"));
 		std::ranges::copy(unloadedFeatures, std::back_inserter(menuList));
 	}
 	// Add top section for feature issues (rejected features, obsolete info, etc.)
 	if (FeatureIssues::HasFeatureIssues()) {
-		menuList.insert(menuList.begin(), BuiltInMenu{ "Feature Issues", []() {
+		menuList.insert(menuList.begin(), BuiltInMenu{ TR("menu.sidebar.feature_issues_header"), []() {
 														  FeatureIssues::DrawFeatureIssuesUI();
 													  } });
 	}
@@ -181,7 +182,7 @@ void FeatureListRenderer::RenderLeftColumn(
 		for (size_t i = 0; i < menuList.size(); i++) {
 			if (std::holds_alternative<BuiltInMenu>(menuList[i])) {
 				const BuiltInMenu& menu = std::get<BuiltInMenu>(menuList[i]);
-				if (menu.name == "General" || menu.name == "Advanced" || menu.name == "Display") {
+				if (menu.name == TR("menu.builtin.general") || menu.name == TR("menu.builtin.advanced") || menu.name == TR("menu.builtin.display")) {
 					builtInMenuCount++;
 				}
 			}
@@ -192,7 +193,7 @@ void FeatureListRenderer::RenderLeftColumn(
 		for (size_t i = 0; i < menuList.size() && renderedBuiltIns < 3; i++) {
 			if (std::holds_alternative<BuiltInMenu>(menuList[i])) {
 				const BuiltInMenu& menu = std::get<BuiltInMenu>(menuList[i]);
-				if (menu.name == "General" || menu.name == "Advanced" || menu.name == "Display") {
+				if (menu.name == TR("menu.builtin.general") || menu.name == TR("menu.builtin.advanced") || menu.name == TR("menu.builtin.display")) {
 					std::visit(ListMenuVisitor{ i, selectedMenu, categoryExpansionStates }, menuList[i]);
 					renderedBuiltIns++;
 				}
@@ -200,14 +201,14 @@ void FeatureListRenderer::RenderLeftColumn(
 		}
 
 		// Add Features header and search bar after built-in settings
-		Util::DrawSectionHeader("Features", true);
+		Util::DrawSectionHeader(TR("menu.sidebar.features_header").c_str(), true);
 		Util::DrawFeatureSearchBar(featureSearch);
 
 		// Then render the rest (features and categories, but skip already rendered built-ins)
 		for (size_t i = 0; i < menuList.size(); i++) {
 			if (std::holds_alternative<BuiltInMenu>(menuList[i])) {
 				const BuiltInMenu& menu = std::get<BuiltInMenu>(menuList[i]);
-				if (menu.name == "General" || menu.name == "Advanced" || menu.name == "Display") {
+				if (menu.name == TR("menu.builtin.general") || menu.name == TR("menu.builtin.advanced") || menu.name == TR("menu.builtin.display")) {
 					continue;  // Skip, already rendered
 				}
 			}
@@ -237,7 +238,7 @@ void FeatureListRenderer::RenderRightColumn(
 void FeatureListRenderer::ListMenuVisitor::operator()(const BuiltInMenu& menu)
 {
 	// Use error color for Feature Issues menu item
-	bool isFeatureIssues = (menu.name == "Feature Issues");
+	bool isFeatureIssues = (menu.name == TR("menu.sidebar.feature_issues_header"));
 	if (isFeatureIssues) {
 		auto& themeSettings = globals::menu->GetSettings().Theme;
 		ImGui::PushStyleColor(ImGuiCol_Text, themeSettings.StatusPalette.Error);
@@ -254,7 +255,7 @@ void FeatureListRenderer::ListMenuVisitor::operator()(const BuiltInMenu& menu)
 void FeatureListRenderer::ListMenuVisitor::operator()(const std::string& label)
 {
 	// Style "Unloaded Features" to match category headers
-	if (label == "Unloaded Features") {
+	if (label == TR("menu.sidebar.unloaded_features_header")) {
 		Util::DrawSectionHeader(label.c_str(), true);
 	} else {
 		// Use default separator text for other labels
@@ -379,7 +380,7 @@ void FeatureListRenderer::DrawMenuVisitor::RenderFeatureSettingsTab(Feature* fea
 			ImGui::SeparatorText("Feature Settings");
 			if (isDisabled) {
 				// Show disabled message
-				ImGui::TextColored(themeSettings.StatusPalette.Disable, "Feature settings are hidden because this feature is disabled at boot.");
+				ImGui::TextColored(themeSettings.StatusPalette.Disable, TR("menu.featuresettings.disabled_at_boot").c_str());
 				ImGui::Spacing();
 				ImGui::Text("Enable the feature above to access its configuration options.");
 			} else {
@@ -394,7 +395,7 @@ void FeatureListRenderer::DrawMenuVisitor::RenderFeatureSettingsTab(Feature* fea
 					bool cursorMoved = (std::abs(cursorPosAfter.x - cursorPosBefore.x) > epsilon ||
 										std::abs(cursorPosAfter.y - cursorPosBefore.y) > epsilon);
 					if (!cursorMoved) {
-						ImGui::TextColored(themeSettings.StatusPalette.Disable, "There are no settings available for this feature.");
+						ImGui::TextColored(themeSettings.StatusPalette.Disable, TR("menu.featuresettings.no_settings").c_str());
 					}
 				} else {
 					// Check if feature is obsolete first - always show error for obsolete features
@@ -444,42 +445,42 @@ void FeatureListRenderer::DrawMenuVisitor::RenderFeatureAboutTab(Feature* feat, 
 			ImGui::SeparatorText("Status");
 
 			ImVec4 statusColor;
-			const char* statusText;
+			std::string statusText;
 			if (isDisabled) {
 				statusColor = themeSettings.StatusPalette.Disable;
-				statusText = "Disabled at boot.";
+				statusText = TR("menu.featureabout.status.disabled_at_boot");
 			} else if (hasFailedMessage) {
 				statusColor = themeSettings.StatusPalette.Error;
-				statusText = "Failed to load.";
+				statusText = TR("menu.featureabout.status.failed_to_load");
 			} else if (!isLoaded) {
 				// Check if INI file exists to determine actual status
 				if (!IsFeatureInstalled(feat->GetShortName())) {
 					// INI file missing - feature not installed
 					statusColor = themeSettings.StatusPalette.Error;
-					statusText = "Not installed.";
+					statusText = TR("menu.featureabout.status.not_installed");
 				} else {
 					// INI file exists but feature not loaded - truly pending restart
 					statusColor = themeSettings.StatusPalette.RestartNeeded;
-					statusText = "Pending restart.";
+					statusText = TR("menu.featureabout.status.pending_restart");
 				}
 			} else {
 				statusColor = themeSettings.StatusPalette.SuccessColor;
-				statusText = "Active.";
+				statusText = TR("menu.featureabout.status.active");
 			}
 
-			ImGui::TextColored(statusColor, "Current State: %s", statusText);
+			ImGui::TextColored(statusColor, "%s %s", TR("menu.featureabout.status.current_state").c_str(), statusText.c_str());
 
 			// Feature Info - Description and key features
 			if (isLoaded) {
 				auto [description, keyFeatures] = feat->GetFeatureSummary();
 				if (!description.empty()) {
 					ImGui::Spacing();
-					ImGui::SeparatorText("Description");
+					ImGui::SeparatorText(TR("menu.featureabout.description").c_str());
 					ImGui::TextWrapped("%s", description.c_str());
 
 					if (!keyFeatures.empty()) {
 						ImGui::Spacing();
-						ImGui::SeparatorText("Key Features");
+						ImGui::SeparatorText(TR("menu.featureabout.key_features").c_str());
 						for (const auto& feature : keyFeatures) {
 							ImGui::BulletText("%s", feature.c_str());
 						}
@@ -488,7 +489,7 @@ void FeatureListRenderer::DrawMenuVisitor::RenderFeatureAboutTab(Feature* feat, 
 			} else {
 				// For unloaded features, show basic info if available
 				ImGui::Spacing();
-				ImGui::SeparatorText("Information");
+				ImGui::SeparatorText(TR("menu.featureabout.information").c_str());
 				if (hasFailedMessage) {
 					ImGui::TextColored(themeSettings.StatusPalette.Error, "%s", feat->failedLoadedMessage.c_str());
 				} else {
@@ -496,10 +497,10 @@ void FeatureListRenderer::DrawMenuVisitor::RenderFeatureAboutTab(Feature* feat, 
 					// the detailed information is shown in the Settings tab.
 					// Here we just show a simple message directing users there.
 					if (!IsFeatureInstalled(feat->GetShortName())) {
-						ImGui::Text("Feature installation details are available in the Settings tab.");
+						ImGui::Text(TR("menu.featureabout.feature_installation_details").c_str());
 					} else {
 						// INI file exists but feature not loaded - truly pending restart
-						ImGui::Text("This feature is pending restart.");
+						ImGui::Text(TR("menu.featureabout.pending_restart").c_str());
 					}
 				}
 			}

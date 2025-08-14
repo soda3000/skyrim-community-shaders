@@ -12,6 +12,17 @@
 namespace fs = std::filesystem;
 using json = nlohmann::json;
 
+namespace {
+    inline std::string ToLowerAscii(std::string_view s) {
+        std::string out;
+        out.reserve(s.size());
+        for (unsigned char c : s) {
+            out.push_back((c >= 'A' && c <= 'Z') ? static_cast<char>(c + 32) : static_cast<char>(c));
+        }
+        return out;
+    }
+}
+
 namespace Loc
 {
     static std::unordered_map<std::string, std::string> g_active;    // resolved (lang -> parent -> en)
@@ -60,9 +71,9 @@ namespace Loc
     {
         g_active = g_en;
         for (const auto& kv : g_parent)
-            g_active[kv.first] = kv.second;
+            g_active[ToLowerAscii(kv.first)] = kv.second;
         for (const auto& kv : g_lang)
-            g_active[kv.first] = kv.second;
+            g_active[ToLowerAscii(kv.first)] = kv.second;
     }
 
     // Internal helper: assumes caller holds g_mutex
@@ -170,7 +181,8 @@ namespace Loc
     std::string Get(std::string_view id)
     {
         std::shared_lock lk(g_mutex);
-        auto it = g_active.find(std::string(id));
+        // Ensure key is lowercase
+        auto it = g_active.find(ToLowerAscii(id));
         if (it != g_active.end())
             return it->second;
         // fallback: return id itself, helps find missing keys in dev builds
@@ -198,6 +210,6 @@ namespace Loc
     bool HasKey(std::string_view id)
     {
         std::shared_lock lk(g_mutex);
-        return g_active.find(std::string(id)) != g_active.end();
+        return g_active.find(ToLowerAscii(id)) != g_active.end();
     }
 }

@@ -99,5 +99,36 @@
 
   "menu.sections.palette": "Palette",
   "menu.lbl.simple_palette": "Simple",
-  "menu.lbl.full_palette": "Full"
+  "menu.lbl.full_palette": "Full",
+
+  "menu.builtin.general": "General",
+  "menu.builtin.advanced": "Advanced",
+  "menu.builtin.display": "Display",
+  "menu.sidebar.features_header": "Features",
+  "menu.sidebar.unloaded_features_header": "Unloaded Features",
+  "menu.sidebar.feature_issues_header": "Feature Issues",
+  "menu.sidebar.category.debug": "Debug",
+  "menu.sidebar.category.characters": "Characters",
+  "menu.sidebar.category.grass": "Grass",
+  "menu.sidebar.category.lighting": "Lighting",
+  "menu.sidebar.category.materials": "Materials",
+  "menu.sidebar.category.sky": "Sky",
+  "menu.sidebar.category.landscape & textures": "Landscape & Textures",
+  "menu.sidebar.category.water": "Water",
+  "menu.sidebar.category.other": "Other",
+
+  "menu.featuresettings.disabled_at_boot": "Feature settings are hidden because this feature is disabled at boot.",
+  "menu.featuresettings.no_settings": "There are no settings available for this feature.",
+
+  "menu.featureabout.status.disabled_at_boot": "Disabled at boot.",
+  "menu.featureabout.status.failed_to_load": "Failed to load.",
+  "menu.featureabout.status.not_installed": "Not installed.",
+  "menu.featureabout.status.pending_restart": "Pending restart.",
+  "menu.featureabout.status.active": "Active.",
+  "menu.featureabout.status.current_state": "Current State:",
+  "menu.featureabout.description": "Description",
+  "menu.featureabout.key_features": "Key Features",
+  "menu.featureabout.information": "Information",
+  "menu.featureabout.feature_installation_details": "Feature installation details are available in the Settings tab.",
+  "menu.featureabout.pending_restart": "This feature is pending restart."
 }
