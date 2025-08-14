@@ -10,6 +10,7 @@
 #include "State.h"
 #include "ThemeManager.h"
 #include "Util.h"
+#include "TranslationMacros.h"
 
 void MenuHeaderRenderer::RenderHeader(bool isDocked, bool showLogo, bool canShowIcons, float uiScale, const Menu::UIIcons& uiIcons)
 {
@@ -91,49 +92,58 @@ void MenuHeaderRenderer::RenderHeader(bool isDocked, bool showLogo, bool canShow
 		if (ImGui::BeginTable("##ActionButtons", 4, ImGuiTableFlags_SizingStretchSame)) {
 			// Save Settings Button
 			ImGui::TableNextColumn();
-			if (ImGui::Button("Save Settings", { -1, 0 })) {
+			if (ImGui::Button(TR("menu.btn.save_settings"), { -1, 0 })) {
 				globals::state->Save();
 			}
 
 			// Load Settings Button
 			ImGui::TableNextColumn();
-			if (ImGui::Button("Load Settings", { -1, 0 })) {
+			if (ImGui::Button(TR("menu.btn.load_settings"), { -1, 0 })) {
 				globals::state->Load();
 				globals::features::llf::particleLights.GetConfigs();
 			}
 
 			// Clear Shader Cache Button
 			ImGui::TableNextColumn();
-			if (ImGui::Button("Clear Shader Cache", { -1, 0 })) {
+			if (ImGui::Button(TR("menu.btn.clear_shader_cache"), { -1, 0 })) {
 				shaderCache->Clear();
 				if (shaderCache->IsDiskCache()) {
 					shaderCache->DeleteDiskCache();
 				}
 			}
 			if (auto _tt = Util::HoverTooltipWrapper()) {
-				ImGui::Text(
-					"Clears the shader cache and disk cache (if enabled). "
-					"The Shader Cache is the collection of compiled shaders which replace the vanilla shaders at runtime. "
-					"The Disk Cache is a collection of compiled shaders on disk. "
-					"Clearing will mean that shaders are recompiled only when the game re-encounters them. ");
+				const std::string tooltip = Loc::Fmt(
+					"menu.tip.clear_shader_cache",
+					{
+						{ "clear_shader_cache1", TR("menu.tip.clear_shader_cache1") },
+						{ "clear_shader_cache2", TR("menu.tip.clear_shader_cache2") },
+						{ "clear_shader_cache3", TR("menu.tip.clear_shader_cache3") },
+						{ "clear_shader_cache4", TR("menu.tip.clear_shader_cache4") },
+					}
+				);
+				ImGui::Text("%s", tooltip.c_str());
 			}
 
 			// Error message toggle if needed
 			if (shaderCache->GetFailedTasks()) {
 				ImGui::TableNextRow();
 				ImGui::TableNextColumn();
-				if (ImGui::Button("Toggle Error Message", { -1, 0 })) {
+				if (ImGui::Button(TR("menu.btn.toggle_error_message"), { -1, 0 })) {
 					shaderCache->ToggleErrorMessages();
 				}
 				if (auto _tt = Util::HoverTooltipWrapper()) {
-					ImGui::Text(
-						"Hide or show the shader failure message. "
-						"Your installation is broken and will likely see errors in game. "
-						"Please double check you have updated all features and that your load order is correct. "
-						"See CommunityShaders.log for details and check the Nexus Mods page or Discord server. ");
+					const std::string tooltip = Loc::Fmt(
+						"menu.tip.toggle_error_message",
+						{
+							{ "toggle_error_message1", TR("menu.tip.toggle_error_message1") },
+							{ "toggle_error_message2", TR("menu.tip.toggle_error_message2") },
+							{ "toggle_error_message3", TR("menu.tip.toggle_error_message3") },
+							{ "toggle_error_message4", TR("menu.tip.toggle_error_message4") },
+						}
+					);
+					ImGui::Text("%s", tooltip.c_str());
 				}
 			}
-
 			ImGui::EndTable();
 		}
 
@@ -146,15 +156,20 @@ void MenuHeaderRenderer::RenderHeader(bool isDocked, bool showLogo, bool canShow
 	} else if (shaderCache->GetFailedTasks() && !isDocked) {
 		// If icons are enabled but there are failed tasks, show error toggle button
 		// and add the second separator (only when not docked)
-		if (ImGui::Button("Toggle Error Message", { -1, 0 })) {
+		if (ImGui::Button(TR("menu.btn.toggle_error_message"), { -1, 0 })) {
 			shaderCache->ToggleErrorMessages();
 		}
 		if (auto _tt = Util::HoverTooltipWrapper()) {
-			ImGui::Text(
-				"Hide or show the shader failure message. "
-				"Your installation is broken and will likely see errors in game. "
-				"Please double check you have updated all features and that your load order is correct. "
-				"See CommunityShaders.log for details and check the Nexus Mods page or Discord server. ");
+			const std::string tooltip = Loc::Fmt(
+				"menu.tip.toggle_error_message",
+				{
+					{ "toggle_error_message1", TR("menu.tip.toggle_error_message1") },
+					{ "toggle_error_message2", TR("menu.tip.toggle_error_message2") },
+					{ "toggle_error_message3", TR("menu.tip.toggle_error_message3") },
+					{ "toggle_error_message4", TR("menu.tip.toggle_error_message4") },
+				}
+			);
+			ImGui::Text("%s", tooltip.c_str());
 		}
 
 		// Add second separator when showing error button

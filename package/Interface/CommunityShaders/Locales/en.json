@@ -119,6 +119,10 @@
 
   "menu.featuresettings.disabled_at_boot": "Feature settings are hidden because this feature is disabled at boot.",
   "menu.featuresettings.no_settings": "There are no settings available for this feature.",
+  "menu.featuresettings.instructions": "Enable the feature above to access its configuration options.",
+  "menu.featuresettings.pending_restart": "This feature will be available after restart.",
+  "menu.featuresettings.download_text": "Click here to download this feature ({})",
+  "menu.tip.download_feature": "Download the feature from the mod page.",
 
   "menu.featureabout.status.disabled_at_boot": "Disabled at boot.",
   "menu.featureabout.status.failed_to_load": "Failed to load.",
@@ -130,5 +134,52 @@
   "menu.featureabout.key_features": "Key Features",
   "menu.featureabout.information": "Information",
   "menu.featureabout.feature_installation_details": "Feature installation details are available in the Settings tab.",
-  "menu.featureabout.pending_restart": "This feature is pending restart."
+  "menu.featureabout.pending_restart": "This feature is pending restart.",
+
+  "menu.tip.restore_defaults_1": "Restores the feature's settings back to their default values.",
+  "menu.tip.restore_defaults_2": "You will still need to Save Settings to make these changes permanent.",
+  "menu.tip.restore_defaults": "{suffix1}\n{suffix2}\n",
+
+  "menu.tip.current_state_label": "Current State:",
+  "menu.tip.current_state_enabled": "Enabled",
+  "menu.tip.current_state_disabled": "Disabled",
+  "menu.tip.action_label": "Click to",
+  "menu.tip.future_state_enable": "enable",
+  "menu.tip.future_state_disable": "disable",
+  "menu.tip.state_change_1": "the feature settings at boot.",
+  "menu.tip.state_change_2": "Restart will be required to reenable.",
+  "menu.tip.state_change_3": "This is the same as deleting the ini file.",
+  "menu.tip.state_change_4": "This should remove any performance impact for the feature.",
+  "menu.tip.state_change": "{current_state_label} {current_state}\n{action_label} {action} {suffix1}\n{suffix2}\n{suffix3}\n{suffix4}\n",
+
+  "menu.btn.feature.enable_at_boot": "Enable at Boot",
+  "menu.btn.feature.disable_at_boot": "Disable at Boot",
+  "menu.btn.feature.restore_defaults": "Restore Defaults",
+  "menu.btn.feature.apply_override": "Apply Override",
+  "menu.tip.apply_override_1": "Applies override settings from mod override JSON files.",
+  "menu.tip.apply_override_2": "This will overwrite current settings with override values.",
+  "menu.tip.apply_override_3": "You will still need to Save Settings to make these changes permanent.",
+  "menu.tip.apply_override": "{suffix1}\n{suffix2}\n{suffix3}\n",
+
+  "menu.feature.tab.settings": "Settings",
+  "menu.feature.separator.feature_settings": "Feature Settings",
+  "menu.feature.tab.about": "About",
+  "menu.featureabout.separator.status": "Status",
+
+  "menu.btn.save_settings": "Save Settings",
+  "menu.btn.load_settings": "Load Settings",
+  
+  "menu.btn.clear_shader_cache": "Clear Shader Cache",
+  "menu.tip.clear_shader_cache1": "Clears the shader cache and disk cache (if enabled). ",
+  "menu.tip.clear_shader_cache2": "The Shader Cache is the collection of compiled shaders which replace the vanilla shaders at runtime. ",
+  "menu.tip.clear_shader_cache3": "The Disk Cache is a collection of compiled shaders on disk. ",
+  "menu.tip.clear_shader_cache4": "Clearing will mean that shaders are recompiled only when the game re-encounters them. ",
+  "menu.tip.clear_shader_cache": "{clear_shader_cache1}\n{clear_shader_cache2}\n{clear_shader_cache3}\n{clear_shader_cache4}\n",
+
+  "menu.btn.toggle_error_message": "Toggle Error Message",
+  "menu.tip.toggle_error_message1": "Hide or show the shader failure message.",
+  "menu.tip.toggle_error_message2": "Your installation is broken and will likely see errors in game.",
+  "menu.tip.toggle_error_message3": "Please double check you have updated all features and that your load order is correct.",
+  "menu.tip.toggle_error_message4": "See CommunityShaders.log for details and check the Nexus Mods page or Discord server.", 
+  "menu.tip.toggle_error_message": "{suffix1}\n{suffix2}\n{suffix3}\n{suffix4}\n"
 }

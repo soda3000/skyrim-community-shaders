@@ -372,17 +372,17 @@ bool FeatureListRenderer::DrawMenuVisitor::IsFeatureInstalled(const std::string&
 
 void FeatureListRenderer::DrawMenuVisitor::RenderFeatureSettingsTab(Feature* feat, bool isDisabled, bool isLoaded, bool hasFailedMessage)
 {
-	if (ImGui::BeginTabItem("Settings")) {
+	if (ImGui::BeginTabItem(TR("menu.feature.tab.settings").c_str())) {
 		if (ImGui::BeginChild("##FeatureSettingsFrame", { 0, 0 }, true)) {
 			auto& themeSettings = globals::menu->GetSettings().Theme;
 
 			// Feature-specific settings section
-			ImGui::SeparatorText("Feature Settings");
+			ImGui::SeparatorText(TR("menu.feature.separator.feature_settings").c_str());
 			if (isDisabled) {
 				// Show disabled message
 				ImGui::TextColored(themeSettings.StatusPalette.Disable, TR("menu.featuresettings.disabled_at_boot").c_str());
 				ImGui::Spacing();
-				ImGui::Text("Enable the feature above to access its configuration options.");
+				ImGui::Text(TR("menu.featuresettings.instructions").c_str());
 			} else {
 				if (isLoaded) {
 					// Check if the feature has any settings by monitoring cursor position
@@ -404,19 +404,23 @@ void FeatureListRenderer::DrawMenuVisitor::RenderFeatureSettingsTab(Feature* fea
 						feat->DrawUnloadedUI();
 					} else if (IsFeatureInstalled(feat->GetShortName())) {
 						// INI file exists - show simple pending restart message
-						ImGui::Text("This feature will be available after restart.");
-					} else {
+						ImGui::Text(TR("menu.featuresettings.pending_restart").c_str());
+					} else { // Feature not obsolete, not installed. 
 						// INI file missing - show detailed unloaded UI with installation info
 						feat->DrawUnloadedUI();
 						// Add download link if available
 						if (!feat->GetFeatureModLink().empty()) {
 							ImGui::Spacing();
-							const auto downloadText = fmt::format("Click here to download this feature ({})", feat->GetFeatureModLink());
+							// featuresettings.download_text
+							const std::string downloadText = Loc::Fmt(
+								"menu.featuresettings.download_text",
+								{ { "link", feat->GetFeatureModLink() } }
+							);
 							if (ImGui::Selectable(downloadText.c_str())) {
 								ShellExecuteA(NULL, "open", feat->GetFeatureModLink().c_str(), NULL, NULL, SW_SHOWNORMAL);
 							}
 							if (auto _tt = Util::HoverTooltipWrapper()) {
-								ImGui::Text("Download the feature from the mod page.");
+								ImGui::Text(TR("menu.tip.download_feature").c_str());
 							}
 						}
 					}
@@ -437,12 +441,12 @@ void FeatureListRenderer::DrawMenuVisitor::RenderFeatureSettingsTab(Feature* fea
 
 void FeatureListRenderer::DrawMenuVisitor::RenderFeatureAboutTab(Feature* feat, bool isDisabled, bool isLoaded, bool hasFailedMessage)
 {
-	if (ImGui::BeginTabItem("About")) {
+	if (ImGui::BeginTabItem(TR("menu.feature.tab.about").c_str())) {
 		if (ImGui::BeginChild("##FeatureAboutFrame", { 0, 0 }, true)) {
 			auto& themeSettings = globals::menu->GetSettings().Theme;
 
 			// Status Section
-			ImGui::SeparatorText("Status");
+			ImGui::SeparatorText(TR("menu.featureabout.separator.status").c_str());
 
 			ImVec4 statusColor;
 			std::string statusText;
@@ -471,7 +475,7 @@ void FeatureListRenderer::DrawMenuVisitor::RenderFeatureAboutTab(Feature* feat, 
 			ImGui::TextColored(statusColor, "%s %s", TR("menu.featureabout.status.current_state").c_str(), statusText.c_str());
 
 			// Feature Info - Description and key features
-			if (isLoaded) {
+			if (isLoaded || IsFeatureInstalled(feat->GetShortName())) {
 				auto [description, keyFeatures] = feat->GetFeatureSummary();
 				if (!description.empty()) {
 					ImGui::Spacing();
@@ -486,22 +490,14 @@ void FeatureListRenderer::DrawMenuVisitor::RenderFeatureAboutTab(Feature* feat, 
 						}
 					}
 				}
-			} else {
+			} else { // Unloaded, not installed.
 				// For unloaded features, show basic info if available
 				ImGui::Spacing();
 				ImGui::SeparatorText(TR("menu.featureabout.information").c_str());
 				if (hasFailedMessage) {
 					ImGui::TextColored(themeSettings.StatusPalette.Error, "%s", feat->failedLoadedMessage.c_str());
-				} else {
-					// For features that are pending restart or not installed,
-					// the detailed information is shown in the Settings tab.
-					// Here we just show a simple message directing users there.
-					if (!IsFeatureInstalled(feat->GetShortName())) {
-						ImGui::Text(TR("menu.featureabout.feature_installation_details").c_str());
-					} else {
-						// INI file exists but feature not loaded - truly pending restart
-						ImGui::Text(TR("menu.featureabout.pending_restart").c_str());
-					}
+				} else { // No error, show install instructions
+					ImGui::Text(TR("menu.featureabout.feature_installation_details").c_str());
 				}
 			}
 		}
@@ -516,13 +512,13 @@ void FeatureListRenderer::DrawMenuVisitor::RenderFeatureActionButtons(Feature* f
 	const auto featureName = feat->GetShortName();
 
 	// Calculate button widths based on text content
-	const char* bootButtonText = isDisabled ? "Enable at Boot" : "Disable at Boot";
-	const char* defaultsButtonText = "Restore Defaults";
-	const char* overrideButtonText = "Apply Override";
+	const std::string bootButtonText = isDisabled ? TR("menu.btn.feature.enable_at_boot") : TR("menu.btn.feature.disable_at_boot");
+	const std::string defaultsButtonText = TR("menu.btn.feature.restore_defaults");
+	const std::string overrideButtonText = TR("menu.btn.feature.apply_override");
 
-	float bootButtonWidth = ImGui::CalcTextSize(bootButtonText).x + buttonPadding;
-	float defaultsButtonWidth = ImGui::CalcTextSize(defaultsButtonText).x + buttonPadding;
-	float overrideButtonWidth = ImGui::CalcTextSize(overrideButtonText).x + buttonPadding;
+	float bootButtonWidth = ImGui::CalcTextSize(bootButtonText.c_str()).x + buttonPadding;
+	float defaultsButtonWidth = ImGui::CalcTextSize(defaultsButtonText.c_str()).x + buttonPadding;
+	float overrideButtonWidth = ImGui::CalcTextSize(overrideButtonText.c_str()).x + buttonPadding;
 
 	// Check if override is available for this feature
 	auto overrideManager = SettingsOverrideManager::GetSingleton();
@@ -555,40 +551,53 @@ void FeatureListRenderer::DrawMenuVisitor::RenderFeatureActionButtons(Feature* f
 	}
 
 	ImGui::PushStyleColor(ImGuiCol_Text, textColor);
-	if (ImGui::Button(bootButtonText, { bootButtonWidth, 0 })) {
+	if (ImGui::Button(bootButtonText.c_str(), { bootButtonWidth, 0 })) {
 		bool newState = feat->ToggleAtBootSetting();
 		logger::info("{}: {} at boot.", featureName, newState ? "Enabled" : "Disabled");
 	}
 	ImGui::PopStyleColor();
 
 	if (auto _tt = Util::HoverTooltipWrapper()) {
-		ImGui::Text(
-			"Current State: %s\n"
-			"%s the feature settings at boot. "
-			"Restart will be required to reenable. "
-			"This is the same as deleting the ini file. "
-			"This should remove any performance impact for the feature.",
-			isDisabled ? "Disabled" : "Enabled",
-			isDisabled ? "Enable" : "Disable");
+		const std::string tooltip = Loc::Fmt(
+			"menu.tip.state_change",
+			{
+				{ "current_state_label", TR("menu.featureabout.status.current_state") }, // e.g., "Current State:"
+				{ "current_state", (isDisabled ? TR("menu.tip.current_state_disabled")
+											   : TR("menu.tip.current_state_enabled")) },
+				{ "action_label", TR("menu.tip.action_label") },
+				{ "action",        (isDisabled ? TR("menu.tip.future_state_enable")
+											   : TR("menu.tip.future_state_disable")) },
+				{ "suffix1", TR("menu.tip.state_change_1") },
+				{ "suffix2", TR("menu.tip.state_change_2") },
+				{ "suffix3", TR("menu.tip.state_change_3") },
+				{ "suffix4", TR("menu.tip.state_change_4") },
+			}
+		);
+		ImGui::Text("%s", tooltip.c_str());
 	}
 
 	// Restore Defaults button (when feature is not disabled and is loaded)
 	if (!isDisabled && isLoaded) {
 		ImGui::SameLine();
-		if (ImGui::Button(defaultsButtonText, { defaultsButtonWidth, 0 })) {
+		if (ImGui::Button(defaultsButtonText.c_str(), { defaultsButtonWidth, 0 })) {
 			feat->RestoreDefaultSettings();
 		}
 
 		if (auto _tt = Util::HoverTooltipWrapper()) {
-			ImGui::Text(
-				"Restores the feature's settings back to their default values. "
-				"You will still need to Save Settings to make these changes permanent.");
+			const std::string tooltip = Loc::Fmt(
+				"menu.tip.restore_defaults",
+				{
+					{ "suffix1", TR("menu.tip.restore_defaults_1") },
+					{ "suffix2", TR("menu.tip.restore_defaults_2") },
+				}
+			);
+			ImGui::Text("%s", tooltip.c_str());
 		}
 
 		// Apply Override button (when feature has available overrides)
 		if (hasOverrides) {
 			ImGui::SameLine();
-			if (ImGui::Button(overrideButtonText, { overrideButtonWidth, 0 })) {
+			if (ImGui::Button(overrideButtonText.c_str(), { overrideButtonWidth, 0 })) {
 				if (feat->ReapplyOverrideSettings()) {
 					logger::info("Successfully reapplied override settings for {}", featureName);
 				} else {
@@ -597,10 +606,15 @@ void FeatureListRenderer::DrawMenuVisitor::RenderFeatureActionButtons(Feature* f
 			}
 
 			if (auto _tt = Util::HoverTooltipWrapper()) {
-				ImGui::Text(
-					"Reapplies override settings from mod override JSON files. "
-					"This will overwrite current settings with override values. "
-					"You will still need to Save Settings to make these changes permanent.");
+				const std::string tooltip = Loc::Fmt(
+					"menu.tip.apply_override",
+					{
+						{ "suffix1", TR("menu.tip.apply_override_1") },
+						{ "suffix2", TR("menu.tip.apply_override_2") },
+						{ "suffix3", TR("menu.tip.apply_override_3") },
+					}
+				);
+				ImGui::Text("%s", tooltip.c_str());
 			}
 		}
 	}
