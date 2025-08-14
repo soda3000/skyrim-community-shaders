@@ -1,5 +1,6 @@
 #include "ThemeManager.h"
 #include "../Menu.h"
+#include "Localization.h"
 
 #include <algorithm>
 #include <cmath>
@@ -112,6 +113,8 @@ void ThemeManager::SetupImGuiStyle(const Menu& menu)
 void ThemeManager::ReloadFont(const Menu& menu, float& cachedFontSize)
 {
 	auto& themeSettings = menu.GetTheme();
+
+	Loc::SetLanguage(themeSettings.Language);
 
 	ImGuiIO& io = ImGui::GetIO();
 	io.Fonts->Clear();

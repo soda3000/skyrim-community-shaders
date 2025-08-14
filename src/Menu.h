@@ -41,7 +41,6 @@ public:
 	void ProcessInputEvents(RE::InputEvent* const* a_events);
 	bool ShouldSwallowInput();
 
-public:
 	// Input handling flags (made public for InputEventHandler access)
 	bool settingToggleKey = false;
 	bool settingSkipCompilationKey = false;
@@ -94,6 +93,7 @@ public:
 
 	struct ThemeSettings
 	{
+		std::string Language = ThemeManager::Constants::DEFAULT_LANGUAGE; // Localization language code
 		float FontSize = ThemeManager::Constants::DEFAULT_FONT_SIZE;
 		float GlobalScale = REL::Module::IsVR() ? -0.5f : 0.f;  // exponential
 
@@ -214,7 +214,10 @@ public:
 
 	bool overlayVisible = false;
 
-public:
+	// Localization variables
+	bool langChanged = false;
+	std::string langNew;
+
 	// Move KeyEvent struct here
 	class CharEvent : public RE::InputEvent
 	{

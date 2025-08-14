@@ -10,6 +10,8 @@ public:
 
 	struct Constants
 	{
+		// Localization constants
+		static constexpr const char* DEFAULT_LANGUAGE = "en";
 		// Font size constants
 		static constexpr float DEFAULT_SCREEN_HEIGHT = 1080.0f;  // Default screen resolution to use for subsequent calculations
 		static constexpr float DEFAULT_FONT_RATIO = 0.025f;      // Default 2.5% of screen height

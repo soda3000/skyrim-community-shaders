@@ -17,6 +17,7 @@
 #include "Menu/AdvancedSettingsRenderer.h"
 #include "Menu/DisplaySettingsRenderer.h"
 #include "Menu/FeatureListRenderer.h"
+#include "Menu/Localization.h"
 #include "Menu/MenuHeaderRenderer.h"
 #include "Menu/OverlayRenderer.h"
 #include "Menu/SettingsTabRenderer.h"
@@ -97,6 +98,7 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
 
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
 	Menu::ThemeSettings,
+	Language,
 	FontSize,
 	GlobalScale,
 	UseSimplePalette,
@@ -160,6 +162,10 @@ void Menu::Init()
 	auto& imgui_io = ImGui::GetIO();
 	imgui_io.ConfigFlags = ImGuiConfigFlags_NavEnableKeyboard | ImGuiConfigFlags_NavEnableGamepad | ImGuiConfigFlags_DockingEnable;
 	imgui_io.BackendFlags = ImGuiBackendFlags_HasMouseCursors | ImGuiBackendFlags_RendererHasVtxOffset | ImGuiBackendFlags_HasGamepad;
+
+	// Initialize localization (use runtime Data path)
+	Loc::Init(L"Data/Interface/CommunityShaders/Locales");
+	Loc::SetLanguage(settings.Theme.Language);
 
 	// Enhanced font configuration for sharper text rendering
 	ImFontConfig font_config;
@@ -237,6 +243,13 @@ void Menu::DrawSettings()
 		OnFocusChanged();
 		focusChanged = false;
 	}
+
+	if (langChanged) {
+		Loc::SetLanguage(langNew);
+		settings.Theme.Language = langNew;
+		langChanged = false;
+	}
+
 	ImGui::DockSpaceOverViewport(NULL, ImGuiDockNodeFlags_PassthruCentralNode);
 
 	ImGui::SetNextWindowPos(Util::GetNativeViewportSizeScaled(0.5f), ImGuiCond_FirstUseEver, ImVec2(0.5f, 0.5f));
