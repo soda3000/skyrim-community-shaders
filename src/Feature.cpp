@@ -36,6 +36,7 @@
 #include "Features/WaterEffects.h"
 #include "Features/WeatherEditor.h"
 #include "Features/WetnessEffects.h"
+#include "Features/HiZOcclusion.h"
 #include "Menu.h"
 #include "SettingsOverrideManager.h"
 #include "Utils/Format.h"
@@ -239,6 +240,7 @@ const std::vector<Feature*>& Feature::GetFeatureList()
 		&globals::features::extendedTranslucency,
 		&globals::features::upscaling,
 		&globals::features::renderDoc,
+		&globals::features::hiZOcclusion,
 		&globals::features::weatherEditor,
 		&globals::features::linearLighting,
 		&globals::features::unifiedWater,

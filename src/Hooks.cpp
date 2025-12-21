@@ -17,6 +17,14 @@
 #include "Features/VR.h"
 #include "Features/VolumetricLighting.h"
 
+#include <RE/B/BSGeometry.h>
+#include <RE/N/NiAVObject.h>
+#include <RE/N/NiBound.h>
+#include <RE/S/ShaderAccumulator.h>
+#include <RE/N/NiSmartPointer.h>
+
+#include "Features/HiZOcclusion.h"
+
 #include "ShaderTools/BSShaderHooks.h"
 
 std::unordered_map<void*, std::pair<std::unique_ptr<uint8_t[]>, size_t>> ShaderBytecodeMap;
@@ -758,6 +766,72 @@ namespace Hooks
 		static inline REL::Relocation<decltype(thunk)> func;
 	};
 
+	struct TESObjectLAND_SetupMaterial
+	{
+		static bool thunk(RE::TESObjectLAND* land)
+		{
+			bool vanillaResult = func(land);
+
+			// setup material for PBR
+			auto TruePBRSingleton = globals::truePBR;
+			if (TruePBRSingleton->TESObjectLAND_SetupMaterial(land)) {
+				// if PBR, we are done
+				return true;
+			}
+
+			// setup material for terrain helper
+			auto& terrainHelper = globals::features::terrainHelper;
+			if (vanillaResult && terrainHelper.loaded) {
+				terrainHelper.TESObjectLAND_SetupMaterial(land);
+			}
+
+			return vanillaResult;
+		}
+		static inline REL::Relocation<decltype(thunk)> func;
+	};
+
+	struct BSLightingShader_SetupMaterial
+	{
+		static void thunk(RE::BSLightingShader* shader, RE::BSLightingShaderMaterialBase const* material)
+		{
+			// setup material for PBR
+			auto TruePBRSingleton = globals::truePBR;
+			if (TruePBRSingleton->BSLightingShader_SetupMaterial(shader, material)) {
+				// if PBR, we are done
+				return;
+			}
+
+			// vanilla
+			func(shader, material);
+
+			// terrain helper
+			auto& terrainHelper = globals::features::terrainHelper;
+			if (terrainHelper.loaded) {
+				terrainHelper.BSLightingShader_SetupMaterial(material);
+			}
+		};
+		static inline REL::Relocation<decltype(thunk)> func;
+	};
+
+struct BSBatchRenderer_RenderPassImmediately
+	{
+		static void thunk(RE::BSRenderPass* pass, uint32_t technique, bool alphaTest, uint32_t renderFlags)
+		{
+			// Collect valid geometry for next frame's testing
+			if (globals::features::hiZOcclusion.settings.enableHiZCulling && pass->geometry && pass->geometry->worldBound.radius > 0.0f) {
+				// Fast O(1) check
+				if (globals::features::hiZOcclusion.pendingGeometrySet.insert(pass->geometry).second) {
+					// Was inserted (not duplicate), add to vector too
+					auto* rawGeometry = pass->geometry;
+					globals::features::hiZOcclusion.pendingGeometry.emplace_back(rawGeometry);
+				}
+			}
+
+			func(pass, technique, alphaTest, renderFlags);
+		}
+		static inline REL::Relocation<decltype(thunk)> func;
+	};
+
 #ifdef TRACY_ENABLE
 	struct Main_Update
 	{
@@ -988,6 +1062,9 @@ namespace Hooks
 			}
 		}
 
+		logger::info("Hooking BSBatchRenderer::RenderPassImmediately for Hi-Z culling");
+		stl::write_thunk_call<BSBatchRenderer_RenderPassImmediately>(REL::RelocationID(100852, 107642).address() + REL::Relocate(0x29E, 0x28F));
+		
 		stl::write_thunk_call<BSLightingShader_SetupGeometry_GeometrySetupConstantPointLights>(REL::RelocationID(100565, 107300).address() + REL::Relocate(0x523, 0xB0E, 0x5FE));
 	}
 
