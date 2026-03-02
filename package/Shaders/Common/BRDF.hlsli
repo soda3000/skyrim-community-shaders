@@ -95,6 +95,218 @@ namespace BRDF
 		return (1 / Math::PI) * (Fd + Fb);
 	}
 
+	// Energy-preserving Oren-Nayar (EON) diffuse BRDF and importance sampling
+	// [Fujii 2024, "A Survey on Physically Based Oren-Nayar Variants"]
+	namespace EON
+	{
+		static const float CONSTANT1 = 0.5f - 2.0f / (3.0f * Math::PI);
+		static const float CONSTANT2 = 2.0f / 3.0f - 28.0f / (15.0f * Math::PI);
+
+		// Exact directional albedo of the Fujii Oren-Nayar (FON) model
+		float E_FON_Exact(float mu, float r)
+		{
+			float AF = 1.0f / (1.0f + CONSTANT1 * r);
+			float BF = r * AF;
+			float Si = sqrt(max(1.0f - mu * mu, 0.0f));
+			float G = Si * (acos(clamp(mu, -1.0f, 1.0f)) - Si * mu)
+			        + (2.0f / 3.0f) * ((Si / max(mu, EPSILON_DIVISION)) * (1.0f - Si * Si * Si) - Si);
+			return AF + (BF / Math::PI) * G;
+		}
+
+		// Fast polynomial approximation of E_FON
+		float E_FON_Approx(float mu, float r)
+		{
+			float mucomp = 1.0f - mu;
+			static const float g1 = 0.0571085289f;
+			static const float g2 = 0.491881867f;
+			static const float g3 = -0.332181442f;
+			static const float g4 = 0.0714429953f;
+			float GoverPi = mucomp * (g1 + mucomp * (g2 + mucomp * (g3 + mucomp * g4)));
+			return (1.0f + r * GoverPi) / (1.0f + CONSTANT1 * r);
+		}
+
+		// EON BRDF evaluation
+		//   rho     = single-scattering albedo
+		//   r       = roughness in [0, 1]
+		//   wi, wo  = incident and outgoing directions in local tangent space (z = surface normal)
+		//   exact   = true for exact E_FON, false for fast approximation
+		float3 Diffuse(float3 rho, float r, float3 wi, float3 wo, bool exact)
+		{
+			float mu_i = wi.z;
+			float mu_o = wo.z;
+			float s = dot(wi, wo) - mu_i * mu_o;
+			float sovertF = s > 0.0f ? s / max(mu_i, mu_o) : s;
+			float AF = 1.0f / (1.0f + CONSTANT1 * r);
+			float3 f_ss = (rho / Math::PI) * AF * (1.0f + r * sovertF);
+
+			float EFo = exact ? E_FON_Exact(mu_o, r) : E_FON_Approx(mu_o, r);
+			float EFi = exact ? E_FON_Exact(mu_i, r) : E_FON_Approx(mu_i, r);
+			float avgEF = AF * (1.0f + CONSTANT2 * r);
+
+			float3 rho_ms = (rho * rho) * avgEF / (1.0f - rho * (1.0f - avgEF));
+			static const float eps = 1.0e-7f;
+			float3 f_ms = (rho_ms / Math::PI) * max(eps, 1.0f - EFo)
+			            * max(eps, 1.0f - EFi)
+			            / max(eps, 1.0f - avgEF);
+
+			return f_ss + f_ms;
+		}
+
+		// Pipeline-compatible EON diffuse factor (replaces Diffuse_Lambert)
+		// Returns EON BRDF pre-divided by albedo so downstream BaseColor multiply
+		// gives the correct energy-preserving result: output * BaseColor = EON(BaseColor).
+		//   rho     = albedo (needed for multi-scattering energy compensation)
+		//   r       = roughness in [0, 1]
+		//   wi, wo  = light and view directions in local tangent space (z = surface normal)
+		float3 DiffuseFactor(float3 rho, float r, float3 wi, float3 wo)
+		{
+			float mu_i = wi.z;
+			float mu_o = wo.z;
+			float s = dot(wi, wo) - mu_i * mu_o;
+			float sovertF = s > 0.0f ? s / max(mu_i, mu_o) : s;
+			float AF = 1.0f / (1.0f + CONSTANT1 * r);
+
+			// Single-scattering factor (replaces 1/pi from Lambert)
+			float f_ss = (1.0f / Math::PI) * AF * (1.0f + r * sovertF);
+
+			// Multi-scattering energy compensation
+			float EFo = E_FON_Approx(mu_o, r);
+			float EFi = E_FON_Approx(mu_i, r);
+			float avgEF = AF * (1.0f + CONSTANT2 * r);
+
+			// rho_ms / rho = rho * avgEF / (1 - rho * (1 - avgEF))
+			static const float eps = 1.0e-7f;
+			float3 rho_ms_over_rho = rho * avgEF / max(eps, 1.0f - rho * (1.0f - avgEF));
+
+			float3 f_ms = (rho_ms_over_rho / Math::PI) * max(eps, 1.0f - EFo)
+			            * max(eps, 1.0f - EFi)
+			            / max(eps, 1.0f - avgEF);
+
+			return f_ss + f_ms;
+		}
+
+		// EON directional albedo (for energy conservation / lobe weighting)
+		float3 DirectionalAlbedo(float3 rho, float r, float3 wi, bool exact)
+		{
+			float mu_i = wi.z;
+			float AF = 1.0f / (1.0f + CONSTANT1 * r);
+			float EF = exact ? E_FON_Exact(mu_i, r) : E_FON_Approx(mu_i, r);
+			float avgEF = AF * (1.0f + CONSTANT2 * r);
+			float3 rho_ms = (rho * rho) * avgEF / (1.0f - rho * (1.0f - avgEF));
+			return rho * EF + rho_ms * (1.0f - EF);
+		}
+
+		// LTC lobe coefficients a, b, c, d as a function of mu = cos(theta_o) and r
+		void LTC_Coeffs(float mu, float r, out float a, out float b, out float c, out float d)
+		{
+			a = 1.0f + r * (0.303392f + (-0.518982f + 0.111709f * mu) * mu + (-0.276266f + 0.335918f * mu) * r);
+			b = r * (-1.16407f + 1.15859f * mu + (0.150815f - 0.150105f * mu) * r) / (mu * mu * mu - 1.43545f);
+			c = 1.0f + r * (0.20013f + (-0.506373f + 0.261777f * mu) * mu);
+			d = r * (0.540852f + (-1.01625f + 0.475392f * mu) * mu) / (-1.0743f + (0.0725628f + mu) * mu);
+		}
+
+		// Orthonormal basis for LTC transform (z-axis aligned with surface normal)
+		// Returns float3x3 with basis vectors as rows.
+		// To transform from LTC to local space: mul(v, basis)
+		// To transform from local to LTC space: mul(basis, v)
+		float3x3 OrthonormalBasis_LTC(float3 w)
+		{
+			float lenSqr = dot(w.xy, w.xy);
+			float3 X = lenSqr > 0.0f ? float3(w.x, w.y, 0.0f) * rsqrt(lenSqr) : float3(1, 0, 0);
+			float3 Y = float3(-X.y, X.x, 0.0f);
+			return float3x3(X, Y, float3(0, 0, 1));
+		}
+
+		// CLTC importance sampling of a direction
+		// Returns float4(wi_local.xyz, pdf)
+		float4 CLTC_Sample(float3 wo_local, float r, float u1, float u2)
+		{
+			float a, b, c, d;
+			LTC_Coeffs(wo_local.z, r, a, b, c, d);
+			float R = sqrt(u1);
+			float phi = 2.0f * Math::PI * u2;
+			float x, y;
+			sincos(phi, y, x);
+			x *= R;
+			y *= R;
+			float vz = 1.0f / sqrt(d * d + 1.0f);
+			float s = 0.5f * (1.0f + vz);
+			x = -lerp(sqrt(1.0f - y * y), x, s);
+			float3 wh = float3(x, y, sqrt(max(1.0f - (x * x + y * y), 0.0f)));
+			float pdf_wh = wh.z / (Math::PI * s);
+			float3 wi = float3(a * wh.x + b * wh.z, c * wh.y, d * wh.x + wh.z);
+			float len = length(wi);
+			float detM = c * (a - b * d);
+			float pdf_wi = pdf_wh * len * len * len / detM;
+			float3x3 basis = OrthonormalBasis_LTC(wo_local);
+			wi = normalize(mul(wi, basis));
+			return float4(wi, pdf_wi);
+		}
+
+		// CLTC PDF evaluation
+		float CLTC_PDF(float3 wo_local, float3 wi_local, float r)
+		{
+			float3x3 basis = OrthonormalBasis_LTC(wo_local);
+			float3 wi = mul(basis, wi_local);
+			float a, b, c, d;
+			LTC_Coeffs(wo_local.z, r, a, b, c, d);
+			float detM = c * (a - b * d);
+			float3 wh = float3(c * (wi.x - b * wi.z), (a - b * d) * wi.y, -c * (d * wi.x - a * wi.z));
+			float lenSqr = dot(wh, wh);
+			float vz = 1.0f / sqrt(d * d + 1.0f);
+			float s = 0.5f * (1.0f + vz);
+			float pdf = detM * detM / (lenSqr * lenSqr) * max(wh.z, 0.0f) / (Math::PI * s);
+			return pdf;
+		}
+
+		// Uniform hemisphere lobe sampling
+		float3 UniformLobeSample(float u1, float u2)
+		{
+			float sinTheta = sqrt(1.0f - u1 * u1);
+			float phi = 2.0f * Math::PI * u2;
+			float cp, sp;
+			sincos(phi, sp, cp);
+			return float3(sinTheta * cp, sinTheta * sp, u1);
+		}
+
+		// Importance sampling of the EON BRDF via CLTC
+		//   wo_local = outgoing direction in local tangent space (z = normal)
+		//   r        = roughness in [0, 1]
+		//   u1, u2   = uniform random numbers in [0, 1]
+		//   Returns float4(wi_local.xyz, pdf)
+		float4 Sample(float3 wo_local, float r, float u1, float u2)
+		{
+			float mu = wo_local.z;
+			float P_u = pow(max(r, 0.0f), 0.1f) * (0.162925f + (-0.372058f + (0.538233f - 0.290822f * mu) * mu) * mu);
+			float P_c = 1.0f - P_u;
+			float4 wi;
+			float pdf_c;
+			if (u1 <= P_u) {
+				u1 = u1 / P_u;
+				wi = float4(UniformLobeSample(u1, u2), 0.0f);
+				pdf_c = CLTC_PDF(wo_local, wi.xyz, r);
+			} else {
+				u1 = (u1 - P_u) / P_c;
+				wi = CLTC_Sample(wo_local, r, u1, u2);
+				pdf_c = wi.w;
+			}
+			static const float pdf_u = 1.0f / (2.0f * Math::PI);
+			wi.w = P_u * pdf_u + P_c * pdf_c;
+			return wi;
+		}
+
+		// PDF of the EON importance sampling
+		float PDF(float3 wo_local, float3 wi_local, float r)
+		{
+			float mu = wo_local.z;
+			float P_u = pow(max(r, 0.0f), 0.1f) * (0.162925f + (-0.372058f + (0.538233f - 0.290822f * mu) * mu) * mu);
+			float P_c = 1.0f - P_u;
+			float pdf_c = CLTC_PDF(wo_local, wi_local, r);
+			static const float pdf_u = 1.0f / (2.0f * Math::PI);
+			return P_u * pdf_u + P_c * pdf_c;
+		}
+	}
+
 	// Specular BRDFs
 	// [Schlick 1994, "An Inexpensive BRDF Model for Physically-Based Rendering"]
 	float3 F_Schlick(float3 specularColor, float VdotH)

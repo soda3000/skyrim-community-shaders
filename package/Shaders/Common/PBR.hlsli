@@ -151,7 +151,7 @@ namespace PBR
 		else
 #endif
 		{
-			lightingOutput.diffuse += detailedLightColor * satNdotL * BRDF::Diffuse_Lambert();
+			lightingOutput.diffuse += detailedLightColor * satNdotL * BRDF::Diffuse_Burley(material.Roughness, satNdotV, satNdotL, satVdotH);
 
 			float3 F;
 #if defined(GLINT)
@@ -180,7 +180,7 @@ namespace PBR
 				float forwardScatter = exp2(saturate(-VdotL) * subsurfacePower - subsurfacePower);
 				float backScatter = saturate(satNdotL * material.Thickness + (1.0 - material.Thickness)) * 0.5;
 				float subsurface = lerp(backScatter, 1, forwardScatter) * (1.0 - material.Thickness);
-				lightingOutput.transmission += material.SubsurfaceColor * subsurface * softLightColor * BRDF::Diffuse_Lambert();
+				lightingOutput.transmission += material.SubsurfaceColor * subsurface * softLightColor * BRDF::Diffuse_Burley(material.Roughness, satNdotV, satNdotL, satVdotH);
 			}
 			else if ((PBRFlags & Flags::TwoLayer) != 0)
 			{
@@ -203,7 +203,7 @@ namespace PBR
 				lightingOutput.diffuse *= layerAttenuation;
 				lightingOutput.specular *= layerAttenuation;
 
-				lightingOutput.coatDiffuse += context.coatLightColor * coatNdotL * BRDF::Diffuse_Lambert();
+				lightingOutput.coatDiffuse += context.coatLightColor * coatNdotL * BRDF::Diffuse_Burley(material.CoatRoughness, coatNdotV, coatNdotL, coatVdotH);
 				lightingOutput.specular += coatSpecular * material.CoatStrength;
 			}
 #endif
