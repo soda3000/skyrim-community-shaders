@@ -185,6 +185,30 @@ namespace BRDF
 			return f_ss + f_ms;
 		}
 
+		// Scalar-parameter overload for pipeline integration
+		// Equivalent to vector DiffuseFactor using precomputed dot products
+		float3 DiffuseFactor(float3 rho, float r, float NdotL, float NdotV, float VdotL)
+		{
+			float s = VdotL - NdotL * NdotV;
+			float sovertF = s > 0.0f ? s / max(NdotL, NdotV) : s;
+			float AF = 1.0f / (1.0f + CONSTANT1 * r);
+
+			float f_ss = (1.0f / Math::PI) * AF * (1.0f + r * sovertF);
+
+			float EFo = E_FON_Approx(NdotV, r);
+			float EFi = E_FON_Approx(NdotL, r);
+			float avgEF = AF * (1.0f + CONSTANT2 * r);
+
+			static const float eps = 1.0e-7f;
+			float3 rho_ms_over_rho = rho * avgEF / max(eps, 1.0f - rho * (1.0f - avgEF));
+
+			float3 f_ms = (rho_ms_over_rho / Math::PI) * max(eps, 1.0f - EFo)
+			            * max(eps, 1.0f - EFi)
+			            / max(eps, 1.0f - avgEF);
+
+			return f_ss + f_ms;
+		}
+
 		// EON directional albedo (for energy conservation / lobe weighting)
 		float3 DirectionalAlbedo(float3 rho, float r, float3 wi, bool exact)
 		{

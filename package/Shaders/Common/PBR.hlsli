@@ -151,7 +151,7 @@ namespace PBR
 		else
 #endif
 		{
-			lightingOutput.diffuse += detailedLightColor * satNdotL * BRDF::Diffuse_Burley(material.Roughness, satNdotV, satNdotL, satVdotH);
+			lightingOutput.diffuse += detailedLightColor * satNdotL * BRDF::EON::DiffuseFactor(material.BaseColor, material.Roughness, satNdotL, satNdotV, VdotL);
 
 			float3 F;
 #if defined(GLINT)
@@ -180,7 +180,7 @@ namespace PBR
 				float forwardScatter = exp2(saturate(-VdotL) * subsurfacePower - subsurfacePower);
 				float backScatter = saturate(satNdotL * material.Thickness + (1.0 - material.Thickness)) * 0.5;
 				float subsurface = lerp(backScatter, 1, forwardScatter) * (1.0 - material.Thickness);
-				lightingOutput.transmission += material.SubsurfaceColor * subsurface * softLightColor * BRDF::Diffuse_Burley(material.Roughness, satNdotV, satNdotL, satVdotH);
+				lightingOutput.transmission += material.SubsurfaceColor * subsurface * softLightColor * BRDF::EON::DiffuseFactor(material.SubsurfaceColor, material.Roughness, satNdotL, satNdotV, VdotL);
 			}
 			else if ((PBRFlags & Flags::TwoLayer) != 0)
 			{
@@ -188,6 +188,7 @@ namespace PBR
 				float coatNdotV = satNdotV;
 				float coatNdotH = satNdotH;
 				float coatVdotH = satVdotH;
+				float coatVdotL = dot(coatV, coatL);
 				[branch] if ((PBRFlags & Flags::CoatNormal) != 0)
 				{
 					coatNdotL = clamp(dot(coatN, coatL), EPSILON_DOT_CLAMP, 1);
@@ -203,7 +204,7 @@ namespace PBR
 				lightingOutput.diffuse *= layerAttenuation;
 				lightingOutput.specular *= layerAttenuation;
 
-				lightingOutput.coatDiffuse += context.coatLightColor * coatNdotL * BRDF::Diffuse_Burley(material.CoatRoughness, coatNdotV, coatNdotL, coatVdotH);
+				lightingOutput.coatDiffuse += context.coatLightColor * coatNdotL * BRDF::EON::DiffuseFactor(material.CoatColor, material.CoatRoughness, coatNdotL, coatNdotV, coatVdotL);
 				lightingOutput.specular += coatSpecular * material.CoatStrength;
 			}
 #endif
