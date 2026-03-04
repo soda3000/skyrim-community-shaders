@@ -831,7 +831,8 @@ namespace Hooks
 				    !globals::state->activeReflections) {
 					if (!hiz.settings.cullLODObjects && HiZOcclusion::IsLODGeometry(&geometry)) {
 						hiz.stats.lodSkippedCount++;
-					} else if (HiZOcclusion::IsGeometryOccluded(&geometry)) {
+					} else if (HiZOcclusion::IsGeometryOccluded(&geometry) &&
+							!HiZOcclusion::IsPlayerCharacterGeometry(&geometry)) {
 						hiz.stats.earlyCulledCount++;
 						return;
 					}
@@ -858,7 +859,8 @@ namespace Hooks
 				    !globals::state->activeReflections) {
 					if (!hiz.settings.cullLODObjects && HiZOcclusion::IsLODGeometry(&geometry)) {
 						hiz.stats.lodSkippedCount++;
-					} else if (HiZOcclusion::IsGeometryOccluded(&geometry)) {
+					} else if (HiZOcclusion::IsGeometryOccluded(&geometry) &&
+							!HiZOcclusion::IsPlayerCharacterGeometry(&geometry)) {
 						hiz.stats.earlyCulledCount++;
 						return;
 					}
@@ -884,7 +886,8 @@ namespace Hooks
 				    !globals::state->activeReflections) {
 					if (!hiz.settings.cullLODObjects && HiZOcclusion::IsLODGeometry(&geometry)) {
 						hiz.stats.lodSkippedCount++;
-					} else if (HiZOcclusion::IsGeometryOccluded(&geometry)) {
+					} else if (HiZOcclusion::IsGeometryOccluded(&geometry) &&
+							!HiZOcclusion::IsPlayerCharacterGeometry(&geometry)) {
 						hiz.stats.earlyCulledCount++;
 						return;
 					}
@@ -911,9 +914,11 @@ namespace Hooks
 				std::lock_guard<std::mutex> lock(globals::features::hiZOcclusion.pendingGeometryMutex);
 				// Fast O(1) check
 				if (globals::features::hiZOcclusion.pendingGeometrySet.insert(pass->geometry).second) {
-					// Was inserted (not duplicate), add to vector too
-					auto* rawGeometry = pass->geometry;
-					globals::features::hiZOcclusion.pendingGeometry.emplace_back(rawGeometry);
+					if (!HiZOcclusion::IsPlayerCharacterGeometry(pass->geometry)) {
+						auto* rawGeometry = pass->geometry;
+						globals::features::hiZOcclusion.pendingGeometry.emplace_back(rawGeometry);
+					}
+					// Player geometry: stays in set to skip future passes, but not added to vector
 				}
 			}
 			
