@@ -197,6 +197,9 @@ struct HiZOcclusion : OverlayFeature
     
     // Check if geometry has LOD flags (LODObjects, HDLODObjects, LODLandscape)
     static bool IsLODGeometry(RE::BSGeometry* geometry);
+
+    // Check for first-person geometry
+    static bool IsPlayerCharacterGeometry(RE::BSGeometry* geometry);
     
     // Check if a Utility shader call should be culled for the given render pass
     // Returns true if the call should be culled, false otherwise

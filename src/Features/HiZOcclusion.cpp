@@ -10,6 +10,7 @@
 #include <RE/N/NiBound.h>
 #include <RE/B/BSShaderProperty.h>
 #include <RE/B/BSLightingShaderProperty.h>
+#include <RE/P/PlayerCharacter.h>
 
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
     HiZOcclusion::Settings,
@@ -1592,6 +1593,23 @@ bool HiZOcclusion::IsLODGeometry(RE::BSGeometry* geometry)
     
     using Flag = RE::BSShaderProperty::EShaderPropertyFlag;
     return shaderProperty->flags.any(Flag::kLODObjects, Flag::kHDLODObjects, Flag::kLODLandscape);
+}
+
+bool HiZOcclusion::IsPlayerCharacterGeometry(RE::BSGeometry* geometry)
+{
+    if (!geometry) return false;
+    auto* player = RE::PlayerCharacter::GetSingleton();
+    if (!player) return false;
+    auto* root1st = player->Get3D(true);
+    auto* root3rd = player->Get3D(false);
+    if (!root1st && !root3rd) return false;
+    RE::NiNode* parent = geometry->parent;
+    while (parent) {
+        if ((root1st && parent == root1st) || (root3rd && parent == root3rd))
+            return true;
+        parent = parent->parent;
+    }
+    return false;
 }
 
 void HiZOcclusion::MarkGeometryOccluded(RE::BSGeometry* geometry)
