@@ -28,7 +28,8 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
     showVisInsideBounds,
     showVisInvalidRadius,
     showCulledFrustum,
-    showCulledNoEarlyOut
+    showCulledNoEarlyOut,
+    consecutiveOccludedThreshold
 )
 
 HiZOcclusion::~HiZOcclusion()
@@ -176,6 +177,20 @@ void HiZOcclusion::DrawSettings()
 						"Disable if you see flickering on distant mountains or trees."
 					});
 				}
+
+                int threshold = static_cast<int>(settings.consecutiveOccludedThreshold);
+                if (ImGui::SliderInt("Consecutive Occluded Threshold", &threshold, 1, 100)) {
+                    settings.consecutiveOccludedThreshold = static_cast<uint32_t>(threshold);
+                }
+                if (auto _tt = Util::HoverTooltipWrapper()) {
+                    Util::DrawMultiLineTooltip({
+                        "Number of consecutive occluded test results required before",
+                        "an object is hidden via SetAppCulled (removed from scene graph).",
+                        "1 = hide after first failed test (aggressive, may cause pop-in).",
+                        "5 = default, good balance between latency and stability.",
+                        "Higher values are safer but slower to react."
+                    });
+                }
 
 				// Performance Statistics
 				ImGui::Spacing();
@@ -481,7 +496,8 @@ void HiZOcclusion::Reset()
 {
     if (!settings.enableHiZCulling) {
         if (wasEnabled) {
-            // Uncull all hidden geometries
+            // Restore all app-culled geometry and clear occlusion tracking
+            ClearOcclusionState();
             if (!unCullNextFrame.empty()) {
                 for (auto& geometry : unCullNextFrame) {
                     if (geometry) {
@@ -489,14 +505,6 @@ void HiZOcclusion::Reset()
                     }
                 }
                 unCullNextFrame.clear();
-            }
-            // Empty pending geometry list (with mutex protection for early culling hooks)
-            {
-                std::lock_guard<std::mutex> lock(pendingGeometryMutex);
-                if (!pendingGeometry.empty()) {
-                    pendingGeometry.clear();
-                }
-                pendingGeometrySet.clear();
             }
             // Release and clear all resources
             ReleaseBoundsOverlayResources();
@@ -1513,7 +1521,6 @@ void HiZOcclusion::ProcessVisibilityResults(uint32_t bufferIndex) {
 
     unCullNextFrame.clear();
     
-    
     // Track when we received fresh results
     stats.lastResultFrame = globals::state->frameCount;
     stats.staleFrameCount = 0;
@@ -1571,15 +1578,6 @@ void HiZOcclusion::ProcessVisibilityResults(uint32_t bufferIndex) {
     }
 }
 
-bool HiZOcclusion::IsGeometryOccluded(RE::BSGeometry* geometry)
-{
-    if (!geometry) {
-        return false;
-    }
-    // O(1) flag check instead of hash set lookup
-    return (geometry->GetFlags().underlying() & kOccludedFlag) != 0;
-}
-
 bool HiZOcclusion::IsLODGeometry(RE::BSGeometry* geometry)
 {
     if (!geometry) {
@@ -1622,6 +1620,12 @@ void HiZOcclusion::MarkGeometryOccluded(RE::BSGeometry* geometry)
     flags.set(static_cast<RE::NiAVObject::Flag>(kOccludedFlag));
     // Also add to set for iteration in ClearOcclusionState
     occludedGeometry.insert(geometry);
+    // Increment consecutive count; app-cull once threshold is reached
+    uint32_t& count = consecutiveOccludedCount[geometry];
+    ++count;
+    if (count >= settings.consecutiveOccludedThreshold) {
+        geometry->SetAppCulled(true);
+    }
 }
 
 void HiZOcclusion::MarkGeometryVisible(RE::BSGeometry* geometry)
@@ -1635,84 +1639,25 @@ void HiZOcclusion::MarkGeometryVisible(RE::BSGeometry* geometry)
     flags = stl::enumeration<RE::NiAVObject::Flag, uint32_t>(newFlags);
     // Remove from set
     occludedGeometry.erase(geometry);
+    // Reset consecutive count and unconditionally restore app-cull state
+    if (consecutiveOccludedCount.erase(geometry) > 0) {
+        geometry->SetAppCulled(false);
+    }
 }
 
 void HiZOcclusion::ClearOcclusionState()
 {
-    // Clear flag on all occluded geometry
+    // Clear flag on all occluded geometry and restore app-cull state where needed
     for (auto* geo : occludedGeometry) {
         if (geo) {
             auto& flags = geo->GetFlags();
             auto newFlags = static_cast<RE::NiAVObject::Flag>(flags.underlying() & ~kOccludedFlag);
             flags = stl::enumeration<RE::NiAVObject::Flag, uint32_t>(newFlags);
+            if (consecutiveOccludedCount.count(geo)) {
+                geo->SetAppCulled(false);
+            }
         }
     }
     occludedGeometry.clear();
-}
-
-bool HiZOcclusion::ShouldCullUtilityShader(RE::BSRenderPass* pass, uint32_t technique)
-{
-    if (!pass || !pass->geometry || !pass->shader) {
-        return false;
-    }
-    
-    // Only process Utility shaders
-    if (pass->shader->shaderType != RE::BSShader::Type::Utility) {
-        return false;
-    }
-    
-    // Utility shader technique flags
-    constexpr uint32_t RenderDepth = 1 << 13;
-    constexpr uint32_t RenderShadowmap = 1 << 14;
-    constexpr uint32_t RenderShadowmapClamped = 1 << 15;
-    constexpr uint32_t RenderShadowmapPb = 1 << 16;
-    constexpr uint32_t DepthWriteDecals = 1 << 17;
-    constexpr uint32_t RenderShadowmask = 1 << 21;
-    constexpr uint32_t RenderShadowmaskSpot = 1 << 22;
-    constexpr uint32_t RenderShadowmaskPb = 1 << 23;
-    constexpr uint32_t RenderShadowmaskDpb = 1 << 24;
-    
-    constexpr uint32_t shadowMask = RenderShadowmap | RenderShadowmapClamped | RenderShadowmapPb;
-    constexpr uint32_t shadowMaskMask = RenderShadowmask | RenderShadowmaskSpot | RenderShadowmaskPb | RenderShadowmaskDpb;
-    constexpr uint32_t depthMask = RenderDepth | DepthWriteDecals;
-    constexpr uint32_t cullableMask = shadowMask | shadowMaskMask | depthMask;
-    
-    // Only process shadow and depth passes
-    if ((technique & cullableMask) == 0) {
-        return false;
-    }
-    
-    stats.utilityCallsTotal++;
-    
-    // Check if geometry is occluded
-    if (!IsGeometryOccluded(pass->geometry)) {
-        return false;
-    }
-    
-    stats.utilityCallsCulled++;
-    return true;
-}
-
-bool HiZOcclusion::ShouldCullParticleShader(RE::BSRenderPass* pass)
-{
-    if (!pass || !pass->geometry || !pass->shader) {
-        return false;
-    }
-    
-    // Only process Particle and Effect shaders
-    auto shaderType = pass->shader->shaderType;
-    if (shaderType != RE::BSShader::Type::Particle && shaderType != RE::BSShader::Type::Effect) {
-        return false;
-    }
-    
-    stats.particleCallsTotal++;
-    
-    // Check if geometry is occluded
-    if (!IsGeometryOccluded(pass->geometry)) {
-        return false;
-    }
-    
-    // Particle/Effect shaders don't cast shadows, safe to cull when occluded
-    stats.particleCallsCulled++;
-    return true;
+    consecutiveOccludedCount.clear();
 }

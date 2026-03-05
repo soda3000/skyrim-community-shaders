@@ -111,7 +111,7 @@ struct HiZOcclusion : OverlayFeature
         
         // Hi-Z culling settings
         bool enableHiZCulling = true;     // enable Hi-Z occlusion culling
-        float conservativeBias = 0.010f;   // depth bias for conservative testing (0.01 = 1% bias)
+        float conservativeBias = 0.001f;   // depth bias for conservative testing (0.01 = 1% bias)
         bool cullLODObjects = false;      // enable culling for LOD objects (may cause flickering at low bias)
         bool showCullingStats = false;    // show Hi-Z culling statistics in UI
 
@@ -125,6 +125,8 @@ struct HiZOcclusion : OverlayFeature
         bool showVisInvalidRadius = true;
         bool showCulledFrustum = true;
         bool showCulledNoEarlyOut = true;
+
+        uint32_t consecutiveOccludedThreshold = 5; // 1-100, cull after N consecutive occluded tests
     };
 
     Settings settings;
@@ -200,14 +202,6 @@ struct HiZOcclusion : OverlayFeature
 
     // Check for first-person geometry
     static bool IsPlayerCharacterGeometry(RE::BSGeometry* geometry);
-    
-    // Check if a Utility shader call should be culled for the given render pass
-    // Returns true if the call should be culled, false otherwise
-    bool ShouldCullUtilityShader(RE::BSRenderPass* pass, uint32_t technique);
-    
-    // Check if a Particle/Effect shader call should be culled for the given render pass
-    // Returns true if the call should be culled, false otherwise
-    bool ShouldCullParticleShader(RE::BSRenderPass* pass);
     
     // Accessors for culling step
     inline ID3D11ShaderResourceView* GetHiZSRV() const { return hiZSRV; }
@@ -333,9 +327,10 @@ struct HiZOcclusion : OverlayFeature
     
     // Set for iterating occluded geometry (needed for ClearOcclusionState and unCullNextFrame)
     std::unordered_set<RE::BSGeometry*> occludedGeometry;
+
+    // Consecutive occluded test counts — SetAppCulled(true) fires when count reaches threshold
+    std::unordered_map<RE::BSGeometry*, uint32_t> consecutiveOccludedCount;
     
-    // Occlusion state management - uses flag bit for O(1) checks, set for iteration
-    [[nodiscard]] static bool IsGeometryOccluded(RE::BSGeometry* geometry);
     void MarkGeometryOccluded(RE::BSGeometry* geometry);
     void MarkGeometryVisible(RE::BSGeometry* geometry);
     void ClearOcclusionState();

@@ -723,23 +723,6 @@ namespace Hooks
 	{
 		static void thunk(RE::BSCullingProcess* cullingProcess, RE::BSGeometry& geometry, uint32_t a_arg2)
 		{
-
-			if (globals::state->inWorld) {
-				auto& hiz = globals::features::hiZOcclusion;
-				if (hiz.loaded &&
-				    hiz.settings.enableHiZCulling &&
-				    !globals::state->renderingShadowmaps &&
-				    !globals::state->activeReflections) {
-					if (!hiz.settings.cullLODObjects && HiZOcclusion::IsLODGeometry(&geometry)) {
-						hiz.stats.lodSkippedCount++;
-					} else if (HiZOcclusion::IsGeometryOccluded(&geometry) &&
-							!HiZOcclusion::IsPlayerCharacterGeometry(&geometry)) {
-						hiz.stats.earlyCulledCount++;
-						return;
-					}
-				}
-			}
-
 			func(cullingProcess, geometry, a_arg2);
 		}
 		static inline REL::Relocation<decltype(thunk)> func;
@@ -751,23 +734,6 @@ namespace Hooks
 	{
 		static void thunk(RE::BSFadeNodeCuller* culler, RE::BSGeometry& geometry, uint32_t a_arg2)
 		{
-			// Fast early-out: check inWorld first (single bool) before touching any feature data
-			if (globals::state->inWorld) {
-				auto& hiz = globals::features::hiZOcclusion;
-				if (hiz.loaded &&
-				    hiz.settings.enableHiZCulling &&
-				    !globals::state->renderingShadowmaps &&
-				    !globals::state->activeReflections) {
-					if (!hiz.settings.cullLODObjects && HiZOcclusion::IsLODGeometry(&geometry)) {
-						hiz.stats.lodSkippedCount++;
-					} else if (HiZOcclusion::IsGeometryOccluded(&geometry) &&
-							!HiZOcclusion::IsPlayerCharacterGeometry(&geometry)) {
-						hiz.stats.earlyCulledCount++;
-						return;
-					}
-				}
-			}
-
 			func(culler, geometry, a_arg2);
 		}
 		static inline REL::Relocation<decltype(thunk)> func;
@@ -778,23 +744,6 @@ namespace Hooks
 	{
 		static void thunk(RE::NiCullingProcess* cullingProcess, RE::BSGeometry& geometry, uint32_t a_arg2)
 		{
-			// Fast early-out: check inWorld first (single bool) before touching any feature data
-			if (globals::state->inWorld) {
-				auto& hiz = globals::features::hiZOcclusion;
-				if (hiz.loaded &&
-				    hiz.settings.enableHiZCulling &&
-				    !globals::state->renderingShadowmaps &&
-				    !globals::state->activeReflections) {
-					if (!hiz.settings.cullLODObjects && HiZOcclusion::IsLODGeometry(&geometry)) {
-						hiz.stats.lodSkippedCount++;
-					} else if (HiZOcclusion::IsGeometryOccluded(&geometry) &&
-							!HiZOcclusion::IsPlayerCharacterGeometry(&geometry)) {
-						hiz.stats.earlyCulledCount++;
-						return;
-					}
-				}
-			}
-
 			func(cullingProcess, geometry, a_arg2);
 		}
 		static inline REL::Relocation<decltype(thunk)> func;
@@ -807,11 +756,15 @@ namespace Hooks
 			// Collect valid geometry for next frame's testing
 			// Skip collection during shadow map, depth prepass, and reflection rendering to avoid false positives
 			if (!globals::state->renderingShadowmaps && 
-			    !globals::state->renderingDepthPrepass &&
-			    !globals::state->activeReflections &&
-			    globals::features::hiZOcclusion.settings.enableHiZCulling && 
-			    pass->geometry && 
-			    pass->geometry->worldBound.radius > 0.0f) {
+				!globals::state->renderingDepthPrepass &&
+				!globals::state->activeReflections &&
+				globals::features::hiZOcclusion.settings.enableHiZCulling && 
+				pass->shader &&
+				pass->shader->shaderType.get() != RE::BSShader::Type::Grass &&
+				pass->shader->shaderType.get() != RE::BSShader::Type::Sky &&
+				pass->shader->shaderType.get() != RE::BSShader::Type::Water &&
+				pass->geometry && 
+				pass->geometry->worldBound.radius > 0.0f) {
 				std::lock_guard<std::mutex> lock(globals::features::hiZOcclusion.pendingGeometryMutex);
 				// Fast O(1) check
 				if (globals::features::hiZOcclusion.pendingGeometrySet.insert(pass->geometry).second) {
@@ -820,38 +773,6 @@ namespace Hooks
 						globals::features::hiZOcclusion.pendingGeometry.emplace_back(rawGeometry);
 					}
 					// Player geometry: stays in set to skip future passes, but not added to vector
-				}
-			}
-			
-			// Skip rendering geometry that has been determined to be occluded
-			// Never cull during reflection rendering - reflections need all visible geometry
-			if (globals::features::hiZOcclusion.loaded && 
-			    globals::features::hiZOcclusion.settings.enableHiZCulling &&
-			    !globals::state->activeReflections &&
-			    pass->shader && 
-			    pass->geometry) {
-				auto& hiz = globals::features::hiZOcclusion;
-				switch (pass->shader->shaderType.get()) {
-					case RE::BSShader::Type::Grass:
-					case RE::BSShader::Type::Sky:
-					case RE::BSShader::Type::Water:
-						break;  // Never cull: batched/infinite/reflections
-					case RE::BSShader::Type::Utility:
-						if (hiz.ShouldCullUtilityShader(pass, technique)) return;
-						break;
-					case RE::BSShader::Type::Particle:
-					case RE::BSShader::Type::Effect:
-						if (hiz.ShouldCullParticleShader(pass)) return;
-						break;
-					default:  // Lighting, DistantTree, BloodSplatter
-						hiz.stats.otherCallsTotal++;
-						if (!hiz.settings.cullLODObjects && HiZOcclusion::IsLODGeometry(pass->geometry)) {
-							// LOD culling disabled, skip
-						} else if (HiZOcclusion::IsGeometryOccluded(pass->geometry)) {
-							hiz.stats.otherCallsCulled++;
-							return;
-						}
-						break;
 				}
 			}
 
