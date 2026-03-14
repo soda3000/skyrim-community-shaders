@@ -144,11 +144,7 @@ void SampleSSGISpecular(uint2 pixCoord, sh2 lobe, inout float ao, out float3 il,
 
 	float3 multiBounceSSGIAo = MultiBounceAO(linAlbedo, ssgiAo);
 
-	diffuseColor = Color::IrradianceToGamma(linDiffuseColor);
-
-	diffuseColor += Color::IrradianceToGamma(Color::IrradianceToLinear(directionalAmbientColor) * multiBounceSSGIAo);
-
-	linDiffuseColor = Color::IrradianceToLinear(diffuseColor);
+	linDiffuseColor += Color::IrradianceToLinear(directionalAmbientColor) * multiBounceSSGIAo;
 
 	linDiffuseColor += ssgiIl * linAlbedo;
 #endif
@@ -170,25 +166,14 @@ void SampleSSGISpecular(uint2 pixCoord, sh2 lobe, inout float ao, out float3 il,
 
 		float3 finalIrradiance = 0;
 
-		float directionalAmbientColorSpecular = Color::RGBToLuminance(Color::Ambient(max(0, mul(SharedData::DirectionalAmbient, float4(R, 1.0))))) * Color::ReflectionNormalisationScale;
+		float3 directionalAmbientColorSpecular = Color::Ambient(max(0, mul(SharedData::DirectionalAmbient, float4(R, 1.0)))) * Color::ReflectionNormalisationScale;
+		directionalAmbientColorSpecular = Color::IrradianceToLinear(directionalAmbientColorSpecular);
 
 #	if defined(INTERIOR)
-		float3 specularIrradiance = EnvTexture.SampleLevel(LinearSampler, R, level);
+		finalIrradiance = Color::IrradianceToLinear(
+			EnvTexture.SampleLevel(LinearSampler, R, level)
+		) * directionalAmbientColorSpecular;
 
-		float specularIrradianceLuminance = Color::RGBToLuminance(EnvTexture.SampleLevel(LinearSampler, R, 15));
-
-#		if defined(IBL)
-		float3 iblColor = 0;
-		if (SharedData::iblSettings.EnableDiffuseIBL && SharedData::iblSettings.EnableInterior) {
-			directionalAmbientColorSpecular *= SharedData::iblSettings.DALCAmount;
-			iblColor += Color::Saturation(ImageBasedLighting::GetIBLColor(-R), SharedData::iblSettings.IBLSaturation) * SharedData::iblSettings.DiffuseIBLScale;
-			float iblColorLuminance = Color::RGBToLuminance(Color::IrradianceToGamma(iblColor));
-			directionalAmbientColorSpecular += iblColorLuminance;
-		}
-#		endif
-		specularIrradiance = (specularIrradiance / max(specularIrradianceLuminance, 0.001)) * directionalAmbientColorSpecular;
-
-		finalIrradiance = Color::IrradianceToLinear(specularIrradiance);
 #	elif defined(SKYLIGHTING)
 #		if defined(VR)
 		float3 positionMS = positionWS.xyz + FrameBuffer::CameraPosAdjust[eyeIndex].xyz - FrameBuffer::CameraPosAdjust[0].xyz;
@@ -202,62 +187,36 @@ void SampleSSGISpecular(uint2 pixCoord, sh2 lobe, inout float ao, out float3 il,
 		skylightingSpecular = saturate(skylightingSpecular);
 		skylightingSpecular = Skylighting::mixSpecular(SharedData::skylightingSettings, skylightingSpecular);
 
-#		if defined(IBL)
-		float3 iblColor = 0;
-		if (SharedData::iblSettings.EnableDiffuseIBL) {
-			directionalAmbientColorSpecular *= SharedData::iblSettings.DALCAmount;
-			iblColor += Color::Saturation(ImageBasedLighting::GetIBLColor(-R, skylightingSpecular), SharedData::iblSettings.IBLSaturation) * SharedData::iblSettings.DiffuseIBLScale;
-			float iblColorLuminance = Color::RGBToLuminance(Color::IrradianceToGamma(iblColor));
-			directionalAmbientColorSpecular += iblColorLuminance;
-		}
-#		endif
-
 		directionalAmbientColorSpecular = Color::IrradianceToLinear(directionalAmbientColorSpecular);
 		directionalAmbientColorSpecular *= skylightingSpecular;
 		directionalAmbientColorSpecular = Color::IrradianceToGamma(directionalAmbientColorSpecular);
 
+		float3 specularIrradiance = 0.0;
 		float3 specularIrradianceReflections = 0.0;
 
 		if (skylightingSpecular > 0.0) {
-			specularIrradianceReflections = EnvReflectionsTexture.SampleLevel(LinearSampler, R, level);
-
-			float specularIrradianceLuminance = Color::RGBToLuminance(EnvReflectionsTexture.SampleLevel(LinearSampler, R, 15));
-
-			specularIrradianceReflections = (specularIrradianceReflections / max(specularIrradianceLuminance, 0.001)) * directionalAmbientColorSpecular;
-
-			specularIrradianceReflections = Color::IrradianceToLinear(specularIrradianceReflections);
+			specularIrradianceReflections = Color::IrradianceToLinear(
+				EnvReflectionsTexture.SampleLevel(LinearSampler, R, level)
+			);
+			
+			// Only scale by specular shadowing, not by diffuse ambient SH
+			specularIrradianceReflections *= skylightingSpecular; 
 		}
-
-		float3 specularIrradiance = 0.0;
 
 		if (skylightingSpecular < 1.0) {
-			specularIrradiance = EnvTexture.SampleLevel(LinearSampler, R, level);
-
-			float specularIrradianceLuminance = Color::RGBToLuminance(EnvTexture.SampleLevel(LinearSampler, R, 15));
-
-			specularIrradiance = (specularIrradiance / max(specularIrradianceLuminance, 0.001)) * directionalAmbientColorSpecular;
-
-			specularIrradiance = Color::IrradianceToLinear(specularIrradiance);
+			specularIrradiance = Color::IrradianceToLinear(
+				EnvTexture.SampleLevel(LinearSampler, R, level)
+			);
+			
+			// Inversely shadow the base env map
+			specularIrradiance *= (1.0 - skylightingSpecular); 
 		}
 
-		finalIrradiance = lerp(specularIrradiance, specularIrradianceReflections, skylightingSpecular);
+		finalIrradiance = specularIrradiance + specularIrradianceReflections;
 #	else
-#		if defined(IBL)
-		float3 iblColor = 0;
-		if (SharedData::iblSettings.EnableDiffuseIBL) {
-			directionalAmbientColorSpecular *= SharedData::iblSettings.DALCAmount;
-			iblColor += Color::Saturation(ImageBasedLighting::GetIBLColor(-R), SharedData::iblSettings.IBLSaturation) * SharedData::iblSettings.DiffuseIBLScale;
-			float iblColorLuminance = Color::RGBToLuminance(Color::IrradianceToGamma(iblColor));
-			directionalAmbientColorSpecular += iblColorLuminance;
-		}
-#		endif
-		float3 specularIrradianceReflections = EnvReflectionsTexture.SampleLevel(LinearSampler, R, level);
-
-		float specularIrradianceReflectionsLuminance = Color::RGBToLuminance(EnvReflectionsTexture.SampleLevel(LinearSampler, R, 15));
-
-		specularIrradianceReflections = (specularIrradianceReflections / max(specularIrradianceReflectionsLuminance, 0.001)) * directionalAmbientColorSpecular;
-
-		finalIrradiance = Color::IrradianceToLinear(specularIrradianceReflections);
+		finalIrradiance = Color::IrradianceToLinear(
+			EnvReflectionsTexture.SampleLevel(LinearSampler, R, level)
+		);
 #	endif
 
 #	if defined(SSGI)
