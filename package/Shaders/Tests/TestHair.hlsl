@@ -428,16 +428,16 @@ namespace TestConstants
 	float3 F0 = Hair::HairF0();
 
 	// At normal incidence, Fresnel should equal F0
-	float3 F_normal = BRDF::F_Schlick(F0, 1.0f);
+	float3 F_normal = BRDF::Specular::Fresnel::F_Schlick(F0, 1.0f);
 	ASSERT(IsTrue, abs(F_normal.x - F0.x) < TestConstants::EXACT_TOLERANCE);
 
 	// At grazing angle, should approach 1.0
-	float3 F_grazing = BRDF::F_Schlick(F0, 0.0f);
+	float3 F_grazing = BRDF::Specular::Fresnel::F_Schlick(F0, 0.0f);
 	ASSERT(IsTrue, abs(F_grazing.x - 1.0f) < TestConstants::EXACT_TOLERANCE);
 
 	// Monotonically increasing as angle increases (VdotH decreases)
-	float3 F_30 = BRDF::F_Schlick(F0, 0.866f);  // cos(30°)
-	float3 F_60 = BRDF::F_Schlick(F0, 0.5f);    // cos(60°)
+	float3 F_30 = BRDF::Specular::Fresnel::F_Schlick(F0, 0.866f);  // cos(30°)
+	float3 F_60 = BRDF::Specular::Fresnel::F_Schlick(F0, 0.5f);    // cos(60°)
 	ASSERT(IsTrue, F_60.x > F_30.x);
 	ASSERT(IsTrue, F_30.x > F_normal.x);
 }

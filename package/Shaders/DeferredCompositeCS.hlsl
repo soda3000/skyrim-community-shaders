@@ -55,8 +55,7 @@ void SampleSSGI(uint2 pixCoord, float3 normalWS, out float ao, out float3 il)
 void SampleSSGISpecular(uint2 pixCoord, sh2 lobe, inout float ao, out float3 il, in float3 normal, in float3 view, in float roughness)
 {
 	float NdotV = dot(normal, view);
-	float alpha = roughness * roughness;
-	ao = SpecularOcclusion(saturate(NdotV), alpha, ao);
+	ao = SpecularAOLagarde(saturate(NdotV), ao, roughness);
 
 	float4 ssgiIlYSh = SsgiYTexture[pixCoord];
 	float ssgiIlY = SphericalHarmonics::FuncProductIntegral(ssgiIlYSh, lobe);

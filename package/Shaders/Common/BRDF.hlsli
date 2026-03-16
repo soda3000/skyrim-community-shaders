@@ -30,93 +30,157 @@
  */
 namespace BRDF
 {
-
-	// Diffuse BRDFs
-	float Diffuse_Lambert()
+	namespace Diffuse
 	{
-		return 1.0 / Math::PI;
+		float Diffuse_Lambert()
+		{
+			return 1.0 / Math::PI;
+		}
+
+		// [Burley 2012, "Physically-Based Shading at Disney"]
+		float3 Diffuse_Burley(float roughness, float NdotV, float NdotL, float VdotH)
+		{
+			float FD90 = 0.5 + 2.0 * VdotH * VdotH * roughness;
+			float FdV = 1.0 + (FD90 - 1.0) * pow(1.0 - NdotV, 5.0);
+			float FdL = 1.0 + (FD90 - 1.0) * pow(1.0 - NdotL, 5.0);
+			return (1.0 / Math::PI) * (FdV * FdL);
+		}
+
+		// [Gotanda 2012, "Beyond a Simple Physically Based Blinn-Phong Model in Real-Time"]
+		float3 Diffuse_OrenNayar(float roughness, float3 N, float3 V, float3 L, float NdotV, float NdotL)
+		{
+			float a = roughness * roughness * 0.25;
+			float A = 1.0 - 0.5 * (a / (a + 0.33));
+			float B = 0.45 * (a / (a + 0.09));
+
+			float gamma = dot(V - N * NdotV, L - N * NdotL) / (sqrt(saturate(1.0 - NdotV * NdotV)) * sqrt(saturate(1.0 - NdotL * NdotL)));
+
+			float2 cos_alpha_beta = NdotV < NdotL ? float2(NdotV, NdotL) : float2(NdotL, NdotV);
+			float2 sin_alpha_beta = sqrt(saturate(1.0 - cos_alpha_beta * cos_alpha_beta));
+			float C = sin_alpha_beta.x * sin_alpha_beta.y / (EPSILON_DIVISION + cos_alpha_beta.y);
+
+			return (1 / Math::PI) * (A + B * max(0.0, gamma) * C);
+		}
+
+		// [Gotanda 2014, "Designing Reflectance Models for New Consoles"]
+		float3 Diffuse_Gotanda(float roughness, float NdotV, float NdotL, float VdotL)
+		{
+			float a = roughness * roughness;
+			float a2 = a * a;
+			float F0 = 0.04;
+			float Cosri = VdotL - NdotV * NdotL;
+			float Fr = (1 - (0.542026 * a2 + 0.303573 * a) / (a2 + 1.36053)) * (1 - pow(1 - NdotV, 5 - 4 * a2) / (a2 + 1.36053)) * ((-0.733996 * a2 * a + 1.50912 * a2 - 1.16402 * a) * pow(1 - NdotV, 1 + rcp(39 * a2 * a2 + 1)) + 1);
+			float Lm = (max(1 - 2 * a, 0) * (1 - pow(1 - NdotL, 5)) + min(2 * a, 1)) * (1 - 0.5 * a * (NdotL - 1)) * NdotL;
+			float Vd = (a2 / ((a2 + 0.09) * (1.31072 + 0.995584 * NdotV))) * (1 - pow(1 - NdotL, (1 - 0.3726732 * NdotV * NdotV) / (0.188566 + 0.38841 * NdotV)));
+			float Bp = Cosri < 0 ? 1.4 * NdotV * NdotL * Cosri : Cosri;
+			float Lr = (21.0 / 20.0) * (1 - F0) * (Fr * Lm + Vd + Bp);
+			return (1 / Math::PI) * Lr;
+		}
+
+		// [ Chan 2018, "Material Advances in Call of Duty: WWII" ]
+		float3 Diffuse_Chan(float roughness, float NdotV, float NdotL, float VdotH, float NdotH)
+		{
+			float a = roughness * roughness;
+			float a2 = a * a;
+			float g = saturate((1.0 / 18.0) * log2(2 * rcp(a2) - 1));
+
+			float F0 = VdotH + pow(1 - VdotH, 5);
+			float FdV = 1 - 0.75 * pow(1 - NdotV, 5);
+			float FdL = 1 - 0.75 * pow(1 - NdotL, 5);
+
+			float Fd = lerp(F0, FdV * FdL, saturate(2.2 * g - 0.5));
+
+			float Fb = ((34.5 * g - 59) * g + 24.5) * VdotH * exp2(-max(73.2 * g - 21.2, 8.9) * sqrt(NdotH));
+
+			return (1 / Math::PI) * (Fd + Fb);
+		}
+
+		// [Portsmouth et al. 2025, "EON: A Practical Energy-Preserving Rough Diffuse BRDF"]
+		// FON constants
+		static const float constant1_FON = 0.5 - 2.0 / (3.0 * Math::PI);
+		static const float constant2_FON = 2.0 / 3.0 - 28.0 / (15.0 * Math::PI);
+
+		// FON directional albedo (approximate, <0.1% error, avoids acos)
+		float E_FON_approx(float mu, float r)
+		{
+			float mucomp = 1.0 - mu;
+			float GoverPi = mucomp * (0.0571085289 + mucomp * (0.491881867 + mucomp * (-0.332181442 + mucomp * 0.0714429953)));
+			return (1.0 + r * GoverPi) / (1.0 + constant1_FON * r);
+		}
+
+		// EON diffuse BRDF with full-color multi-scatter energy compensation
+		// rho = single-scattering albedo (base color)
+		// r   = roughness in [0, 1]
+		float3 Diffuse_EON(float3 rho, float r, float NdotV, float NdotL, float VdotL)
+		{
+			float s = VdotL - NdotV * NdotL;
+			float sovertF = s > 0.0 ? s / max(NdotV, NdotL) : s;
+
+			float AF = 1.0 / (1.0 + constant1_FON * r);
+			float3 f_ss = (rho / Math::PI) * AF * (1.0 + r * sovertF);
+
+			float EFo = E_FON_approx(NdotV, r);
+			float EFi = E_FON_approx(NdotL, r);
+			float avgEF = AF * (1.0 + constant2_FON * r);
+
+			float3 rho_ms = (rho * rho) * avgEF / (1.0 - rho * (1.0 - avgEF));
+			float3 f_ms = (rho_ms / Math::PI) * max(1e-7, 1.0 - EFo)
+			                                   * max(1e-7, 1.0 - EFi)
+			                                   / max(1e-7, 1.0 - avgEF);
+
+			return f_ss + f_ms;
+		}
+
+		// EON directional albedo for indirect lighting lobe weights
+		float3 E_EON(float3 rho, float r, float mu)
+		{
+			float AF = 1.0 / (1.0 + constant1_FON * r);
+			float EF = E_FON_approx(mu, r);
+			float avgEF = AF * (1.0 + constant2_FON * r);
+			float3 rho_ms = (rho * rho) * avgEF / (1.0 - rho * (1.0 - avgEF));
+			return rho * EF + rho_ms * (1.0 - EF);
+		}
 	}
 
-	// [Burley 2012, "Physically-Based Shading at Disney"]
-	float3 Diffuse_Burley(float roughness, float NdotV, float NdotL, float VdotH)
+	namespace Specular
 	{
-		float FD90 = 0.5 + 2.0 * VdotH * VdotH * roughness;
-		float FdV = 1.0 + (FD90 - 1.0) * pow(1.0 - NdotV, 5.0);
-		float FdL = 1.0 + (FD90 - 1.0) * pow(1.0 - NdotL, 5.0);
-		return (1.0 / Math::PI) * (FdV * FdL);
+		namespace Fresnel
+		{
+			// [Schlick 1994, "An Inexpensive BRDF Model for Physically-Based Rendering"]
+			float3 F_Schlick(float3 specularColor, float VdotH)
+			{
+				float Fc = pow(1 - VdotH, 5);
+				return Fc + (1 - Fc) * specularColor;
+			}
+
+			float3 F_Schlick(float3 F0, float3 F90, float VdotH)
+			{
+				float Fc = pow(1 - VdotH, 5);
+				return F0 + (F90 - F0) * Fc;
+			}
+
+			// [Kutz et al. 2021, "Novel aspects of the Adobe Standard Material" ]
+			float3 F_AdobeF82(float3 F0, float3 F82, float VdotH)
+			{
+				const float Fc = pow(1 - VdotH, 5);
+				const float K = 49.0 / 46656.0;
+				float3 b = (K - K * F82) * (7776.0 + 9031.0 * F0);
+				return saturate(F0 + Fc * ((1 - F0) - b * (VdotH - VdotH * VdotH)));
+			}
+		}
+
+		// [Kulla & Conty 2017, Fdez-Agüera 2019]
+		// Multi-scatter energy compensation for specular microfacet BRDFs.
+		// Ess = single-scatter directional albedo (envBRDF.x + envBRDF.y at F0=1).
+		// When Ess=1 (no energy loss), returns 1.0. When Ess<1, returns >1.0
+		// proportional to F0 — metals (high F0) need more compensation.
+		float3 EnergyCompensation(float3 F0, float2 envBRDF)
+		{
+			float Ess = envBRDF.x + envBRDF.y;
+			return 1.0 + F0 * (1.0 / max(Ess, 1e-7) - 1.0);
+		}
 	}
 
-	// [Gotanda 2012, "Beyond a Simple Physically Based Blinn-Phong Model in Real-Time"]
-	float3 Diffuse_OrenNayar(float roughness, float3 N, float3 V, float3 L, float NdotV, float NdotL)
-	{
-		float a = roughness * roughness * 0.25;
-		float A = 1.0 - 0.5 * (a / (a + 0.33));
-		float B = 0.45 * (a / (a + 0.09));
-
-		float gamma = dot(V - N * NdotV, L - N * NdotL) / (sqrt(saturate(1.0 - NdotV * NdotV)) * sqrt(saturate(1.0 - NdotL * NdotL)));
-
-		float2 cos_alpha_beta = NdotV < NdotL ? float2(NdotV, NdotL) : float2(NdotL, NdotV);
-		float2 sin_alpha_beta = sqrt(saturate(1.0 - cos_alpha_beta * cos_alpha_beta));
-		float C = sin_alpha_beta.x * sin_alpha_beta.y / (EPSILON_DIVISION + cos_alpha_beta.y);
-
-		return (1 / Math::PI) * (A + B * max(0.0, gamma) * C);
-	}
-
-	// [Gotanda 2014, "Designing Reflectance Models for New Consoles"]
-	float3 Diffuse_Gotanda(float roughness, float NdotV, float NdotL, float VdotL)
-	{
-		float a = roughness * roughness;
-		float a2 = a * a;
-		float F0 = 0.04;
-		float Cosri = VdotL - NdotV * NdotL;
-		float Fr = (1 - (0.542026 * a2 + 0.303573 * a) / (a2 + 1.36053)) * (1 - pow(1 - NdotV, 5 - 4 * a2) / (a2 + 1.36053)) * ((-0.733996 * a2 * a + 1.50912 * a2 - 1.16402 * a) * pow(1 - NdotV, 1 + rcp(39 * a2 * a2 + 1)) + 1);
-		float Lm = (max(1 - 2 * a, 0) * (1 - pow(1 - NdotL, 5)) + min(2 * a, 1)) * (1 - 0.5 * a * (NdotL - 1)) * NdotL;
-		float Vd = (a2 / ((a2 + 0.09) * (1.31072 + 0.995584 * NdotV))) * (1 - pow(1 - NdotL, (1 - 0.3726732 * NdotV * NdotV) / (0.188566 + 0.38841 * NdotV)));
-		float Bp = Cosri < 0 ? 1.4 * NdotV * NdotL * Cosri : Cosri;
-		float Lr = (21.0 / 20.0) * (1 - F0) * (Fr * Lm + Vd + Bp);
-		return (1 / Math::PI) * Lr;
-	}
-
-	// [ Chan 2018, "Material Advances in Call of Duty: WWII" ]
-	float3 Diffuse_Chan(float roughness, float NdotV, float NdotL, float VdotH, float NdotH)
-	{
-		float a = roughness * roughness;
-		float a2 = a * a;
-		float g = saturate((1.0 / 18.0) * log2(2 * rcp(a2) - 1));
-
-		float F0 = VdotH + pow(1 - VdotH, 5);
-		float FdV = 1 - 0.75 * pow(1 - NdotV, 5);
-		float FdL = 1 - 0.75 * pow(1 - NdotL, 5);
-
-		float Fd = lerp(F0, FdV * FdL, saturate(2.2 * g - 0.5));
-
-		float Fb = ((34.5 * g - 59) * g + 24.5) * VdotH * exp2(-max(73.2 * g - 21.2, 8.9) * sqrt(NdotH));
-
-		return (1 / Math::PI) * (Fd + Fb);
-	}
-
-	// Specular BRDFs
-	// [Schlick 1994, "An Inexpensive BRDF Model for Physically-Based Rendering"]
-	float3 F_Schlick(float3 specularColor, float VdotH)
-	{
-		float Fc = pow(1 - VdotH, 5);
-		return Fc + (1 - Fc) * specularColor;
-	}
-
-	float3 F_Schlick(float3 F0, float3 F90, float VdotH)
-	{
-		float Fc = pow(1 - VdotH, 5);
-		return F0 + (F90 - F0) * Fc;
-	}
-
-	// [Kutz et al. 2021, "Novel aspects of the Adobe Standard Material" ]
-	float3 F_AdobeF82(float3 F0, float3 F82, float VdotH)
-	{
-		const float Fc = pow(1 - VdotH, 5);
-		const float K = 49.0 / 46656.0;
-		float3 b = (K - K * F82) * (7776.0 + 9031.0 * F0);
-		return saturate(F0 + Fc * ((1 - F0) - b * (VdotH - VdotH * VdotH)));
-	}
 
 	// [Beckmann 1963, "The scattering of electromagnetic waves from rough surfaces"]
 	float D_Beckmann(float roughness, float NdotH)

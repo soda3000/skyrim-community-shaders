@@ -93,7 +93,7 @@ namespace Hair
 
 		const float3 specPrimary = D_KajiyaKay(TshiftPrimary, H, shininess);
 		const float3 specSecondary = D_KajiyaKay(TshiftSecondary, H, shininess * 0.5);
-		const float3 F = BRDF::F_Schlick(HairF0(), HdotL);
+		const float3 F = BRDF::Specular::Fresnel::F_Schlick(HairF0(), HdotL);
 		float3 specR = 0.25 * F * (specPrimary + specSecondary * scatterColor) * NdotL * saturate(VNdotV * (3.4e+38));
 		float scatterFresnel1 = pow(saturate(-dot(L, V)), 9) * pow(saturate(1 - VNdotV * VNdotV), 12);
 		float scatterFresnel2 = saturate(pow(abs(1 - VNdotV), 20));
@@ -151,14 +151,14 @@ namespace Hair
 		// R
 		Mp = Hair_g(B[0], ThetaH - Alpha[0]);
 		Np = 0.25 * cosHalfPhi;
-		Fp = BRDF::F_Schlick(specularColor, sqrt(saturate(0.5 + 0.5 * VdotL))).x;
+		Fp = BRDF::Specular::Fresnel::F_Schlick(specularColor, sqrt(saturate(0.5 + 0.5 * VdotL))).x;
 		R = (Mp * Np) * (Fp * lerp(1, backlit, saturate(-VdotL)));
 
 		// TT
 		Mp = Hair_g(B[1], ThetaH - Alpha[1]);
 		a = (1.55f / hairIOR) * rcp(n_prime);
 		h = cosHalfPhi * (1 + a * (0.6 - 0.8 * cosPhi));
-		f = BRDF::F_Schlick(specularColor, cosThetaD * sqrt(saturate(1 - h * h))).x;
+		f = BRDF::Specular::Fresnel::F_Schlick(specularColor, cosThetaD * sqrt(saturate(1 - h * h))).x;
 		Fp = (1 - f) * (1 - f);
 		Tp = pow(abs(baseColor), 0.5 * sqrt(1 - (h * a) * (h * a)) / cosThetaD);
 		Np = exp(-3.65 * cosPhi - 3.98);
@@ -166,7 +166,7 @@ namespace Hair
 
 		// TRT
 		Mp = Hair_g(B[2], ThetaH - Alpha[2]);
-		f = BRDF::F_Schlick(specularColor, cosThetaD * 0.5f).x;
+		f = BRDF::Specular::Fresnel::F_Schlick(specularColor, cosThetaD * 0.5f).x;
 		Fp = (1 - f) * (1 - f) * f;
 		Tp = pow(abs(baseColor), 0.8 / cosThetaD);
 		Np = exp(17 * cosPhi - 16.78);

@@ -20,14 +20,14 @@ namespace TestConstants
 
 /// @tags brdf, diffuse
 [numthreads(1, 1, 1)] void TestDiffuseLambert() {
-	float lambert = BRDF::Diffuse_Lambert();
+	float lambert = BRDF::Diffuse::Diffuse_Lambert();
 
 	// Lambert should be constant 1/PI (~0.318309)
 	const float EXPECTED_LAMBERT = 1.0f / Math::PI;
 	ASSERT(IsTrue, abs(lambert - EXPECTED_LAMBERT) < TestConstants::EXACT_TOLERANCE);
 
 	// Should always return the same value (deterministic)
-	float lambert2 = BRDF::Diffuse_Lambert();
+	float lambert2 = BRDF::Diffuse::Diffuse_Lambert();
 	ASSERT(AreEqual, lambert, lambert2);
 }
 
@@ -38,28 +38,28 @@ namespace TestConstants
 	float3 F0 = float3(0.04, 0.04, 0.04);
 
 	// Test 1: Normal incidence (VdotH = 1) should return F0
-	float3 fresnel_normal = BRDF::F_Schlick(F0, 1.0f);
+	float3 fresnel_normal = BRDF::Specular::Fresnel::F_Schlick(F0, 1.0f);
 	// Note: Strict tolerance test removed due to floating-point precision issues
 	ASSERT(IsTrue, all(fresnel_normal >= 0.0f));
 
 	// Test 2: Grazing angle (VdotH = 0) should approach 1.0 (Fc = 1)
-	float3 fresnel_grazing = BRDF::F_Schlick(F0, 0.0f);
+	float3 fresnel_grazing = BRDF::Specular::Fresnel::F_Schlick(F0, 0.0f);
 	ASSERT(IsTrue, all(abs(fresnel_grazing - 1.0f) < TestConstants::EXACT_TOLERANCE));
 
 	// Test 3: Intermediate angle (VdotH = 0.707 ≈ 45°) should interpolate
-	float3 fresnel_45 = BRDF::F_Schlick(F0, 0.707f);
+	float3 fresnel_45 = BRDF::Specular::Fresnel::F_Schlick(F0, 0.707f);
 	ASSERT(IsTrue, fresnel_45.r > F0.r);
 	ASSERT(IsTrue, fresnel_45.r < 1.0f);
 
 	// Test 4: Monotonicity - fresnel should increase as angle increases
-	float3 fresnel_30 = BRDF::F_Schlick(F0, 0.866f);  // cos(30°)
-	float3 fresnel_60 = BRDF::F_Schlick(F0, 0.5f);    // cos(60°)
+	float3 fresnel_30 = BRDF::Specular::Fresnel::F_Schlick(F0, 0.866f);  // cos(30°)
+	float3 fresnel_60 = BRDF::Specular::Fresnel::F_Schlick(F0, 0.5f);    // cos(60°)
 	ASSERT(IsTrue, fresnel_60.r > fresnel_30.r);
 	ASSERT(IsTrue, fresnel_30.r > fresnel_normal.r);
 
 	// Test 5: With metallic F0 (gold ~1.0, 0.71, 0.29)
 	float3 F0_metal = float3(1.0, 0.71, 0.29);
-	float3 fresnel_metal = BRDF::F_Schlick(F0_metal, 1.0f);
+	float3 fresnel_metal = BRDF::Specular::Fresnel::F_Schlick(F0_metal, 1.0f);
 	ASSERT(IsTrue, abs(fresnel_metal.r - F0_metal.r) < 0.001f);
 	ASSERT(IsTrue, abs(fresnel_metal.g - F0_metal.g) < 0.001f);
 	ASSERT(IsTrue, abs(fresnel_metal.b - F0_metal.b) < 0.001f);
@@ -205,7 +205,7 @@ namespace TestConstants
 	float NdotL = 0.7f;
 	float VdotH = 0.6f;
 
-	float3 diffuse = BRDF::Diffuse_Burley(roughness, NdotV, NdotL, VdotH);
+	float3 diffuse = BRDF::Diffuse::Diffuse_Burley(roughness, NdotV, NdotL, VdotH);
 
 	// Should be positive
 	ASSERT(IsTrue, diffuse.x > 0.0f);
@@ -213,7 +213,7 @@ namespace TestConstants
 	ASSERT(IsTrue, diffuse.z > 0.0f);
 
 	// Compare with Lambert (Burley is more accurate)
-	float lambert = BRDF::Diffuse_Lambert();
+	float lambert = BRDF::Diffuse::Diffuse_Lambert();
 
 	// Both should be reasonable diffuse values
 	ASSERT(IsTrue, diffuse.x < 1.0f);
@@ -281,7 +281,7 @@ namespace TestConstants
 	float NdotV = dot(N, V);
 	float NdotL = dot(N, L);
 
-	float3 result = BRDF::Diffuse_OrenNayar(roughness, N, V, L, NdotV, NdotL);
+	float3 result = BRDF::Diffuse::Diffuse_OrenNayar(roughness, N, V, L, NdotV, NdotL);
 
 	// Should be positive
 	ASSERT(IsTrue, result.x >= 0.0f);
@@ -289,15 +289,15 @@ namespace TestConstants
 	ASSERT(IsTrue, result.z >= 0.0f);
 
 	// Should differ from Lambert (Oren-Nayar accounts for roughness)
-	float lambert = BRDF::Diffuse_Lambert();
+	float lambert = BRDF::Diffuse::Diffuse_Lambert();
 	ASSERT(IsTrue, abs(result.x - lambert) > 0.001f);
 
 	// Rougher surface should increase diffuse scattering
-	float3 resultRough = BRDF::Diffuse_OrenNayar(0.9f, N, V, L, NdotV, NdotL);
+	float3 resultRough = BRDF::Diffuse::Diffuse_OrenNayar(0.9f, N, V, L, NdotV, NdotL);
 	ASSERT(IsTrue, abs(result.x - resultRough.x) > 0.001f);
 
 	// Smoother surface (low roughness) should approach Lambert
-	float3 resultSmooth = BRDF::Diffuse_OrenNayar(0.0f, N, V, L, NdotV, NdotL);
+	float3 resultSmooth = BRDF::Diffuse::Diffuse_OrenNayar(0.0f, N, V, L, NdotV, NdotL);
 	ASSERT(IsTrue, abs(resultSmooth.x - lambert) < 0.1f);
 }
 
@@ -309,7 +309,7 @@ namespace TestConstants
 	float NdotL = 0.7f;
 	float VdotL = 0.6f;
 
-	float3 result = BRDF::Diffuse_Gotanda(roughness, NdotV, NdotL, VdotL);
+	float3 result = BRDF::Diffuse::Diffuse_Gotanda(roughness, NdotV, NdotL, VdotL);
 
 	// Should be positive
 	ASSERT(IsTrue, result.x >= 0.0f);
@@ -317,14 +317,14 @@ namespace TestConstants
 	ASSERT(IsTrue, result.z >= 0.0f);
 
 	// Roughness variation should affect result
-	float3 resultSmooth = BRDF::Diffuse_Gotanda(0.1f, NdotV, NdotL, VdotL);
-	float3 resultRough = BRDF::Diffuse_Gotanda(0.9f, NdotV, NdotL, VdotL);
+	float3 resultSmooth = BRDF::Diffuse::Diffuse_Gotanda(0.1f, NdotV, NdotL, VdotL);
+	float3 resultRough = BRDF::Diffuse::Diffuse_Gotanda(0.9f, NdotV, NdotL, VdotL);
 
 	ASSERT(IsTrue, abs(result.x - resultSmooth.x) > 0.001f);
 	ASSERT(IsTrue, abs(result.x - resultRough.x) > 0.001f);
 
 	// Different viewing/lighting angles should give different results
-	float3 resultDiffAngle = BRDF::Diffuse_Gotanda(roughness, 0.5f, 0.9f, 0.3f);
+	float3 resultDiffAngle = BRDF::Diffuse::Diffuse_Gotanda(roughness, 0.5f, 0.9f, 0.3f);
 	ASSERT(IsTrue, abs(result.x - resultDiffAngle.x) > 0.001f);
 }
 
@@ -336,7 +336,7 @@ namespace TestConstants
 	float VdotH = 0.85f;
 	float NdotH = 0.9f;
 
-	float3 result = BRDF::Diffuse_Chan(roughness, NdotV, NdotL, VdotH, NdotH);
+	float3 result = BRDF::Diffuse::Diffuse_Chan(roughness, NdotV, NdotL, VdotH, NdotH);
 
 	// Should be positive
 	ASSERT(IsTrue, result.x >= 0.0f);
@@ -344,13 +344,13 @@ namespace TestConstants
 	ASSERT(IsTrue, result.z >= 0.0f);
 
 	// Roughness variation should affect result
-	float3 resultSmooth = BRDF::Diffuse_Chan(0.1f, NdotV, NdotL, VdotH, NdotH);
-	float3 resultRough = BRDF::Diffuse_Chan(0.9f, NdotV, NdotL, VdotH, NdotH);
+	float3 resultSmooth = BRDF::Diffuse::Diffuse_Chan(0.1f, NdotV, NdotL, VdotH, NdotH);
+	float3 resultRough = BRDF::Diffuse::Diffuse_Chan(0.9f, NdotV, NdotL, VdotH, NdotH);
 
 	ASSERT(IsTrue, abs(resultSmooth.x - resultRough.x) > 0.001f);
 
 	// Should differ from Lambert
-	float lambert = BRDF::Diffuse_Lambert();
+	float lambert = BRDF::Diffuse::Diffuse_Lambert();
 	ASSERT(IsTrue, abs(result.x - lambert) > 0.001f);
 }
 
@@ -361,21 +361,21 @@ namespace TestConstants
 	float3 F82 = float3(0.5, 0.5, 0.5);  // Intermediate reflectance
 
 	// Test at normal incidence (VdotH = 1) - should return F0
-	float3 fresnel_normal = BRDF::F_AdobeF82(F0, F82, 1.0f);
+	float3 fresnel_normal = BRDF::Specular::Fresnel::F_AdobeF82(F0, F82, 1.0f);
 	ASSERT(IsTrue, abs(fresnel_normal.x - F0.x) < 0.01f);
 
 	// Test at grazing angle (VdotH = 0) - should approach 1.0
-	float3 fresnel_grazing = BRDF::F_AdobeF82(F0, F82, 0.0f);
+	float3 fresnel_grazing = BRDF::Specular::Fresnel::F_AdobeF82(F0, F82, 0.0f);
 	ASSERT(IsTrue, fresnel_grazing.x > F0.x);
 	ASSERT(IsTrue, fresnel_grazing.x <= 1.0f);
 
 	// Test at 82 degrees (VdotH ≈ 0.139)
 	float VdotH_82 = cos(82.0f * Math::PI / 180.0f);
-	float3 fresnel_82 = BRDF::F_AdobeF82(F0, F82, VdotH_82);
+	float3 fresnel_82 = BRDF::Specular::Fresnel::F_AdobeF82(F0, F82, VdotH_82);
 
 	// Test at different angles
-	float3 fresnel_30 = BRDF::F_AdobeF82(F0, F82, 0.866f);  // cos(30°)
-	float3 fresnel_60 = BRDF::F_AdobeF82(F0, F82, 0.5f);    // cos(60°)
+	float3 fresnel_30 = BRDF::Specular::Fresnel::F_AdobeF82(F0, F82, 0.866f);  // cos(30°)
+	float3 fresnel_60 = BRDF::Specular::Fresnel::F_AdobeF82(F0, F82, 0.5f);    // cos(60°)
 
 	// Adobe F82 is an approximation that uses saturate()
 	// It doesn't strictly preserve energy conservation (result >= F0)
@@ -515,25 +515,25 @@ namespace TestConstants
 	float3 F0 = float3(0.04, 0.04, 0.04);
 
 	// Test with VdotH = 0 (grazing angle)
-	float3 f_grazing = BRDF::F_Schlick(F0, 0.0f);
+	float3 f_grazing = BRDF::Specular::Fresnel::F_Schlick(F0, 0.0f);
 	ASSERT(IsTrue, all(!isnan(f_grazing)));
 	ASSERT(IsTrue, all(!isinf(f_grazing)));
 	ASSERT(IsTrue, all(f_grazing >= 0.0f));
 	ASSERT(IsTrue, all(f_grazing <= 1.0f));
 
 	// Test with VdotH = 1 (normal incidence)
-	float3 f_normal = BRDF::F_Schlick(F0, 1.0f);
+	float3 f_normal = BRDF::Specular::Fresnel::F_Schlick(F0, 1.0f);
 	ASSERT(IsTrue, all(abs(f_normal - F0) < TestConstants::EXACT_TOLERANCE));
 
 	// Test with very high F0 (metallic)
 	float3 F0_metal = float3(0.95, 0.95, 0.95);
-	float3 f_metal = BRDF::F_Schlick(F0_metal, 0.5f);
+	float3 f_metal = BRDF::Specular::Fresnel::F_Schlick(F0_metal, 0.5f);
 	ASSERT(IsTrue, all(f_metal >= F0_metal));
 	ASSERT(IsTrue, all(f_metal <= 1.0f));
 
 	// Test with F0 near 1.0
 	float3 F0_extreme = float3(0.99, 0.99, 0.99);
-	float3 f_extreme = BRDF::F_Schlick(F0_extreme, 0.5f);
+	float3 f_extreme = BRDF::Specular::Fresnel::F_Schlick(F0_extreme, 0.5f);
 	ASSERT(IsTrue, all(f_extreme >= F0_extreme - TestConstants::FLOAT16_EPSILON));
 	ASSERT(IsTrue, all(f_extreme <= 1.0f));
 }
@@ -571,17 +571,17 @@ namespace TestConstants
 	float NdotL = dot(N, L);
 
 	// Test Oren-Nayar with zero roughness (should approach Lambert)
-	float3 result_smooth = BRDF::Diffuse_OrenNayar(0.0f, N, V, L, NdotV, NdotL);
-	float lambert = BRDF::Diffuse_Lambert();
+	float3 result_smooth = BRDF::Diffuse::Diffuse_OrenNayar(0.0f, N, V, L, NdotV, NdotL);
+	float lambert = BRDF::Diffuse::Diffuse_Lambert();
 	ASSERT(IsTrue, abs(result_smooth.x - lambert) < 0.1f);
 
 	// Test with maximum roughness
-	float3 result_rough = BRDF::Diffuse_OrenNayar(1.0f, N, V, L, NdotV, NdotL);
+	float3 result_rough = BRDF::Diffuse::Diffuse_OrenNayar(1.0f, N, V, L, NdotV, NdotL);
 	ASSERT(IsTrue, !isnan(result_rough.x) && !isinf(result_rough.x));
 	ASSERT(IsTrue, result_rough.x >= 0.0f);
 
 	// Test Burley with extreme values
-	float3 burley_extreme = BRDF::Diffuse_Burley(1.0f, TestConstants::NEAR_ZERO, TestConstants::NEAR_ZERO, 0.5f);
+	float3 burley_extreme = BRDF::Diffuse::Diffuse_Burley(1.0f, TestConstants::NEAR_ZERO, TestConstants::NEAR_ZERO, 0.5f);
 	ASSERT(IsTrue, all(!isnan(burley_extreme)));
 	ASSERT(IsTrue, all(burley_extreme >= 0.0f));
 }
@@ -612,6 +612,210 @@ namespace TestConstants
 	ASSERT(IsTrue, d_perfect > 0.0f);
 }
 
+// ============================================================================
+// EON DIFFUSE BRDF TESTS
+// ============================================================================
+
+/// @tags brdf, diffuse, eon
+[numthreads(1, 1, 1)] void TestDiffuseEON() {
+	float3 rho = float3(0.8, 0.5, 0.3);
+	float roughness = 0.5f;
+	float NdotV = 0.8f;
+	float NdotL = 0.7f;
+	float VdotL = 0.6f;
+
+	float3 result = BRDF::Diffuse::Diffuse_EON(rho, roughness, NdotV, NdotL, VdotL);
+
+	// Should be positive
+	ASSERT(IsTrue, result.x > 0.0f);
+	ASSERT(IsTrue, result.y > 0.0f);
+	ASSERT(IsTrue, result.z > 0.0f);
+
+	// Should be in reasonable diffuse range (rho/pi is max ~0.255 for rho=0.8)
+	ASSERT(IsTrue, result.x < 1.0f);
+	ASSERT(IsTrue, result.y < 1.0f);
+	ASSERT(IsTrue, result.z < 1.0f);
+
+	// Should not produce NaN/Inf
+	ASSERT(IsTrue, all(!isnan(result)));
+	ASSERT(IsTrue, all(!isinf(result)));
+
+	// Result should vary with roughness
+	float3 resultSmooth = BRDF::Diffuse::Diffuse_EON(rho, 0.1f, NdotV, NdotL, VdotL);
+	float3 resultRough = BRDF::Diffuse::Diffuse_EON(rho, 0.9f, NdotV, NdotL, VdotL);
+	ASSERT(IsTrue, abs(resultSmooth.x - resultRough.x) > 0.001f);
+}
+
+/// @tags brdf, diffuse, eon, regression
+[numthreads(1, 1, 1)] void TestDiffuseEONZeroRoughness() {
+	// At roughness=0, EON with white albedo should equal Lambert (1/pi)
+	float3 white = float3(1, 1, 1);
+	float lambert = BRDF::Diffuse::Diffuse_Lambert();
+
+	// Test multiple angle configurations
+	float3 r0 = BRDF::Diffuse::Diffuse_EON(white, 0.0f, 0.8f, 0.7f, 0.6f);
+	ASSERT(IsTrue, abs(r0.x - lambert) < TestConstants::APPROX_TOLERANCE);
+	ASSERT(IsTrue, abs(r0.y - lambert) < TestConstants::APPROX_TOLERANCE);
+	ASSERT(IsTrue, abs(r0.z - lambert) < TestConstants::APPROX_TOLERANCE);
+
+	// Normal incidence
+	float3 r1 = BRDF::Diffuse::Diffuse_EON(white, 0.0f, 1.0f, 0.5f, 0.5f);
+	ASSERT(IsTrue, abs(r1.x - lambert) < TestConstants::APPROX_TOLERANCE);
+
+	// Grazing view
+	float3 r2 = BRDF::Diffuse::Diffuse_EON(white, 0.0f, 0.1f, 0.9f, 0.3f);
+	ASSERT(IsTrue, abs(r2.x - lambert) < TestConstants::APPROX_TOLERANCE);
+}
+
+/// @tags brdf, diffuse, eon, lambert, comparison
+[numthreads(1, 1, 1)] void TestDiffuseEONvsLambert() {
+	float3 white = float3(1, 1, 1);
+	float lambert = BRDF::Diffuse::Diffuse_Lambert();
+
+	// At roughness=0, should match Lambert
+	float3 eon_r0 = BRDF::Diffuse::Diffuse_EON(white, 0.0f, 0.8f, 0.7f, 0.6f);
+	ASSERT(IsTrue, abs(eon_r0.x - lambert) < TestConstants::APPROX_TOLERANCE);
+
+	// At roughness>0, should differ from Lambert
+	float3 eon_r5 = BRDF::Diffuse::Diffuse_EON(white, 0.5f, 0.8f, 0.7f, 0.6f);
+	ASSERT(IsTrue, abs(eon_r5.x - lambert) > 0.001f);
+
+	// At high roughness with white albedo, EON should be energy-preserving
+	// Average over the hemisphere should be close to 1/pi (brighter than Lambert at edges)
+	float3 eon_r1_grazing = BRDF::Diffuse::Diffuse_EON(white, 1.0f, 0.1f, 0.1f, -0.5f);
+	// At grazing with backscattering, EON should remain positive and well-behaved
+	ASSERT(IsTrue, eon_r1_grazing.x > 0.0f);
+}
+
+/// @tags brdf, diffuse, eon, burley, comparison
+[numthreads(1, 1, 1)] void TestDiffuseEONvsBurley() {
+	float3 white = float3(1, 1, 1);
+	float roughness = 0.5f;
+	float NdotV = 0.8f;
+	float NdotL = 0.7f;
+	float VdotL = 0.6f;
+	float VdotH = 0.85f;
+
+	float3 eon = BRDF::Diffuse::Diffuse_EON(white, roughness, NdotV, NdotL, VdotL);
+	float3 burley = BRDF::Diffuse::Diffuse_Burley(roughness, NdotV, NdotL, VdotH);
+
+	// Both should be positive
+	ASSERT(IsTrue, eon.x > 0.0f);
+	ASSERT(IsTrue, burley.x > 0.0f);
+
+	// Both should be in similar magnitude range (within 2x of each other)
+	ASSERT(IsTrue, eon.x < burley.x * 2.0f);
+	ASSERT(IsTrue, burley.x < eon.x * 2.0f);
+
+	// At roughness=0, both should approach Lambert
+	float lambert = BRDF::Diffuse::Diffuse_Lambert();
+	float3 eon_r0 = BRDF::Diffuse::Diffuse_EON(white, 0.0f, NdotV, NdotL, VdotL);
+	float3 burley_r0 = BRDF::Diffuse::Diffuse_Burley(0.0f, NdotV, NdotL, VdotH);
+	ASSERT(IsTrue, abs(eon_r0.x - lambert) < TestConstants::APPROX_TOLERANCE);
+	ASSERT(IsTrue, abs(burley_r0.x - lambert) < TestConstants::APPROX_TOLERANCE);
+}
+
+/// @tags brdf, diffuse, eon, edge-cases, robustness
+[numthreads(1, 1, 1)] void TestDiffuseEONEdgeCases() {
+	float3 white = float3(1, 1, 1);
+
+	// Near-zero roughness
+	float3 r_smooth = BRDF::Diffuse::Diffuse_EON(white, TestConstants::NEAR_ZERO, 0.8f, 0.7f, 0.6f);
+	ASSERT(IsTrue, all(!isnan(r_smooth)));
+	ASSERT(IsTrue, all(!isinf(r_smooth)));
+	ASSERT(IsTrue, all(r_smooth > 0.0f));
+
+	// Maximum roughness
+	float3 r_max = BRDF::Diffuse::Diffuse_EON(white, 1.0f, 0.8f, 0.7f, 0.6f);
+	ASSERT(IsTrue, all(!isnan(r_max)));
+	ASSERT(IsTrue, all(!isinf(r_max)));
+	ASSERT(IsTrue, all(r_max > 0.0f));
+
+	// Grazing NdotV
+	float3 r_graze_v = BRDF::Diffuse::Diffuse_EON(white, 0.5f, TestConstants::NEAR_ZERO, 0.7f, 0.1f);
+	ASSERT(IsTrue, all(!isnan(r_graze_v)));
+	ASSERT(IsTrue, all(!isinf(r_graze_v)));
+
+	// Grazing NdotL
+	float3 r_graze_l = BRDF::Diffuse::Diffuse_EON(white, 0.5f, 0.8f, TestConstants::NEAR_ZERO, 0.1f);
+	ASSERT(IsTrue, all(!isnan(r_graze_l)));
+	ASSERT(IsTrue, all(!isinf(r_graze_l)));
+
+	// Saturated color albedo (pure red)
+	float3 red = float3(1, 0.05, 0.05);
+	float3 r_red = BRDF::Diffuse::Diffuse_EON(red, 0.8f, 0.8f, 0.7f, 0.6f);
+	ASSERT(IsTrue, all(!isnan(r_red)));
+	ASSERT(IsTrue, r_red.x > r_red.y);  // Red channel should dominate
+	ASSERT(IsTrue, r_red.x > r_red.z);
+
+	// Negative s term (forward scattering, VdotL < NdotV*NdotL)
+	float3 r_neg_s = BRDF::Diffuse::Diffuse_EON(white, 0.5f, 0.8f, 0.8f, -0.5f);
+	ASSERT(IsTrue, all(!isnan(r_neg_s)));
+	ASSERT(IsTrue, all(!isinf(r_neg_s)));
+	ASSERT(IsTrue, all(r_neg_s > 0.0f));
+}
+
+/// @tags brdf, diffuse, eon, albedo, energy
+[numthreads(1, 1, 1)] void TestEONAlbedo() {
+	float3 white = float3(1, 1, 1);
+
+	// At roughness=0, E_EON should equal rho (Lambert albedo)
+	float3 rho = float3(0.5, 0.5, 0.5);
+	float3 albedo_r0 = BRDF::Diffuse::E_EON(rho, 0.0f, 0.8f);
+	ASSERT(IsTrue, abs(albedo_r0.x - rho.x) < TestConstants::APPROX_TOLERANCE);
+
+	// At roughness=1 with white albedo, should be close to 1.0 (energy preservation)
+	float3 albedo_r1_white = BRDF::Diffuse::E_EON(white, 1.0f, 0.5f);
+	ASSERT(IsTrue, albedo_r1_white.x > 0.95f);  // Should be near 1.0 for white
+	ASSERT(IsTrue, albedo_r1_white.x <= 1.0f + TestConstants::FLOAT16_EPSILON);
+
+	// Should be in [0, 1] for valid rho
+	float3 albedo_mid = BRDF::Diffuse::E_EON(rho, 0.5f, 0.8f);
+	ASSERT(IsTrue, all(albedo_mid >= 0.0f));
+	ASSERT(IsTrue, all(albedo_mid <= 1.0f + TestConstants::FLOAT16_EPSILON));
+
+	// Should vary with view angle
+	float3 albedo_normal = BRDF::Diffuse::E_EON(rho, 0.5f, 1.0f);
+	float3 albedo_grazing = BRDF::Diffuse::E_EON(rho, 0.5f, 0.1f);
+	ASSERT(IsTrue, abs(albedo_normal.x - albedo_grazing.x) > 0.001f);
+
+	// Should vary with roughness
+	float3 albedo_smooth = BRDF::Diffuse::E_EON(rho, 0.1f, 0.8f);
+	float3 albedo_rough = BRDF::Diffuse::E_EON(rho, 0.9f, 0.8f);
+	ASSERT(IsTrue, abs(albedo_smooth.x - albedo_rough.x) > 0.001f);
+
+	// Edge: should not produce NaN/Inf
+	ASSERT(IsTrue, all(!isnan(albedo_r0)));
+	ASSERT(IsTrue, all(!isnan(albedo_r1_white)));
+	ASSERT(IsTrue, all(!isinf(albedo_r0)));
+	ASSERT(IsTrue, all(!isinf(albedo_r1_white)));
+}
+
+/// @tags brdf, diffuse, eon, reciprocity, properties
+[numthreads(1, 1, 1)] void TestEONReciprocity() {
+	float3 rho = float3(0.7, 0.5, 0.3);
+	float roughness = 0.6f;
+	float NdotV = 0.8f;
+	float NdotL = 0.6f;
+	float VdotL = 0.5f;
+
+	// EON should be reciprocal: f(wi, wo) == f(wo, wi)
+	// Swapping NdotV and NdotL (VdotL stays the same since dot(V,L) = dot(L,V))
+	float3 forward = BRDF::Diffuse::Diffuse_EON(rho, roughness, NdotV, NdotL, VdotL);
+	float3 reverse = BRDF::Diffuse::Diffuse_EON(rho, roughness, NdotL, NdotV, VdotL);
+
+	ASSERT(IsTrue, abs(forward.x - reverse.x) < TestConstants::EXACT_TOLERANCE);
+	ASSERT(IsTrue, abs(forward.y - reverse.y) < TestConstants::EXACT_TOLERANCE);
+	ASSERT(IsTrue, abs(forward.z - reverse.z) < TestConstants::EXACT_TOLERANCE);
+
+	// Test at different roughness
+	float3 fwd_rough = BRDF::Diffuse::Diffuse_EON(rho, 1.0f, 0.3f, 0.9f, 0.2f);
+	float3 rev_rough = BRDF::Diffuse::Diffuse_EON(rho, 1.0f, 0.9f, 0.3f, 0.2f);
+	ASSERT(IsTrue, abs(fwd_rough.x - rev_rough.x) < TestConstants::APPROX_TOLERANCE);
+	ASSERT(IsTrue, abs(fwd_rough.y - rev_rough.y) < TestConstants::APPROX_TOLERANCE);
+	ASSERT(IsTrue, abs(fwd_rough.z - rev_rough.z) < TestConstants::APPROX_TOLERANCE);
+}
+
 /// @tags brdf, monotonicity, properties
 [numthreads(1, 1, 1)] void TestFresnelMonotonicity() {
 	// Property test: Fresnel should monotonically increase as angle increases
@@ -621,7 +825,7 @@ namespace TestConstants
 
 	// As VdotH decreases (angle increases), Fresnel should increase
 	for (float vdoth = 1.0f; vdoth >= 0.0f; vdoth -= 0.1f) {
-		float current = BRDF::F_Schlick(F0, vdoth).x;
+		float current = BRDF::Specular::Fresnel::F_Schlick(F0, vdoth).x;
 
 		// Check monotonicity (allow small tolerance for floating point)
 		if (vdoth < 0.99f) {
@@ -655,5 +859,69 @@ namespace TestConstants
 		ASSERT(IsTrue, !isinf(d));
 
 		prev = d;
+	}
+}
+
+/// @tags brdf, specular, energy-compensation
+[numthreads(1, 1, 1)] void TestSpecularEnergyCompensation() {
+	// Test 1: Ess=1.0 → no compensation needed, returns 1.0
+	float2 envBRDF_perfect = float2(0.5, 0.5);  // Ess = 1.0
+	float3 F0 = float3(0.04, 0.04, 0.04);
+	float3 comp = BRDF::Specular::EnergyCompensation(F0, envBRDF_perfect);
+	ASSERT(IsTrue, abs(comp.x - 1.0f) < TestConstants::EXACT_TOLERANCE);
+
+	// Test 2: Ess < 1.0 → returns > 1.0
+	float2 envBRDF_lossy = float2(0.3, 0.1);  // Ess = 0.4
+	float3 comp_lossy = BRDF::Specular::EnergyCompensation(F0, envBRDF_lossy);
+	ASSERT(IsTrue, comp_lossy.x > 1.0f);
+
+	// Test 3: Higher F0 → higher compensation
+	float3 F0_metal = float3(0.9, 0.9, 0.9);
+	float3 comp_metal = BRDF::Specular::EnergyCompensation(F0_metal, envBRDF_lossy);
+	ASSERT(IsTrue, comp_metal.x > comp_lossy.x);
+
+	// Test 4: Result always >= 1.0
+	ASSERT(IsTrue, comp.x >= 1.0f - TestConstants::EXACT_TOLERANCE);
+	ASSERT(IsTrue, comp_lossy.x >= 1.0f);
+	ASSERT(IsTrue, comp_metal.x >= 1.0f);
+
+	// Test 5: Near-zero Ess → no NaN/Inf
+	float2 envBRDF_tiny = float2(0.0001, 0.0001);
+	float3 comp_tiny = BRDF::Specular::EnergyCompensation(F0, envBRDF_tiny);
+	ASSERT(IsTrue, all(!isnan(comp_tiny)));
+	ASSERT(IsTrue, all(!isinf(comp_tiny)));
+	ASSERT(IsTrue, comp_tiny.x >= 1.0f);
+
+	// Test 6: F0=0 → compensation is exactly 1.0 regardless of Ess
+	float3 F0_zero = float3(0, 0, 0);
+	float3 comp_zero = BRDF::Specular::EnergyCompensation(F0_zero, envBRDF_lossy);
+	ASSERT(IsTrue, abs(comp_zero.x - 1.0f) < TestConstants::EXACT_TOLERANCE);
+}
+
+/// @tags brdf, specular, energy-compensation, roughness
+[numthreads(1, 1, 1)] void TestSpecularEnergyCompensationVsRoughness() {
+	float3 F0 = float3(0.5, 0.5, 0.5);
+	float NdotV = 0.8f;
+
+	// Low roughness → Ess near 1 → compensation near 1
+	float2 dfg_smooth = BRDF::EnvBRDF(0.1f, NdotV);
+	float3 comp_smooth = BRDF::Specular::EnergyCompensation(F0, dfg_smooth);
+
+	// High roughness → lower Ess → higher compensation
+	float2 dfg_rough = BRDF::EnvBRDF(0.9f, NdotV);
+	float3 comp_rough = BRDF::Specular::EnergyCompensation(F0, dfg_rough);
+
+	ASSERT(IsTrue, comp_rough.x > comp_smooth.x);
+	ASSERT(IsTrue, comp_smooth.x >= 1.0f - TestConstants::FLOAT16_EPSILON);
+	ASSERT(IsTrue, comp_rough.x >= 1.0f);
+
+	// Monotonicity: compensation should increase with roughness
+	float prev_comp = 0.0f;
+	for (float r = 0.1f; r <= 1.0f; r += 0.1f) {
+		float2 dfg = BRDF::EnvBRDF(r, NdotV);
+		float3 comp = BRDF::Specular::EnergyCompensation(F0, dfg);
+		ASSERT(IsTrue, comp.x >= prev_comp - TestConstants::FLOAT16_EPSILON);
+		ASSERT(IsTrue, !isnan(comp.x) && !isinf(comp.x));
+		prev_comp = comp.x;
 	}
 }

@@ -177,8 +177,8 @@ void EvaluateWetnessLighting(float3 wetnessNormal, DirectContext context, float 
 	float VdotH = saturate(dot(V, H));
 
 	float D = BRDF::D_GGX(roughness, NdotH);
-	float G = BRDF::Vis_SmithJointApprox(roughness, NdotV, NdotL);
-	float3 F = BRDF::F_Schlick(wetnessF0, VdotH);
+	float G = BRDF::Vis_SmithJoint(roughness, NdotV, NdotL);
+	float3 F = BRDF::Specular::Fresnel::F_Schlick(wetnessF0, VdotH);
 
 	F *= wetnessStrength;
 

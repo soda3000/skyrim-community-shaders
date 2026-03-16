@@ -2716,7 +2716,11 @@ PS_OUTPUT main(PS_INPUT input, bool frontFace : SV_IsFrontFace)
 	if (Permutation::PixelShaderDescriptor & Permutation::LightingFlags::CharacterLight) {
 		float charLightMul = saturate(dot(viewDirection, worldNormal.xyz)) * CharacterLightParams.x + CharacterLightParams.y * saturate(dot(float2(0.164398998, -0.986393988), worldNormal.yz));
 		float charLightColor = min(CharacterLightParams.w, max(0, CharacterLightParams.z * TexCharacterLightProjNoiseSampler.Sample(SampCharacterLightProjNoiseSampler, baseShadowUV).x));
+#	if defined(TRUE_PBR)
+		diffuseColor += (charLightMul * charLightColor).xxx * material.BaseColor;
+#	else
 		diffuseColor += (charLightMul * charLightColor).xxx;
+#	endif
 	}
 #	endif
 
@@ -2863,7 +2867,7 @@ PS_OUTPUT main(PS_INPUT input, bool frontFace : SV_IsFrontFace)
 
 #	if defined(TRUE_PBR)
 	{
-		float3 directLightsDiffuseInput = diffuseColor * material.BaseColor;
+		float3 directLightsDiffuseInput = diffuseColor;
 		[branch] if ((PBRFlags & PBR::Flags::ColoredCoat) != 0)
 		{
 			directLightsDiffuseInput = lerp(directLightsDiffuseInput, material.CoatColor * coatLightsDiffuseColor, material.CoatStrength);

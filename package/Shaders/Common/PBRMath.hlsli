@@ -69,8 +69,8 @@ namespace PBR
 	float3 GetSpecularDirectLightMultiplierMicrofacet(float roughness, float3 specularColor, float NdotL, float NdotV, float NdotH, float VdotH, out float3 F)
 	{
 		float D = BRDF::D_GGX(roughness, NdotH);
-		float G = BRDF::Vis_SmithJointApprox(roughness, NdotV, NdotL);
-		F = BRDF::F_Schlick(specularColor, VdotH);
+		float G = BRDF::Vis_SmithJoint(roughness, NdotV, NdotL);
+		F = BRDF::Specular::Fresnel::F_Schlick(specularColor, VdotH);
 
 		return D * G * F;
 	}
@@ -87,7 +87,7 @@ namespace PBR
 	{
 		float D = BRDF::D_Charlie(roughness, NdotH);
 		float G = BRDF::Vis_Neubelt(NdotV, NdotL);
-		float3 F = BRDF::F_Schlick(specularColor, VdotH);
+		float3 F = BRDF::Specular::Fresnel::F_Schlick(specularColor, VdotH);
 
 		return D * G * F;
 	}
