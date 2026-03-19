@@ -3,6 +3,7 @@
 #include "Menu.h"
 #include "OverlayFeature.h"
 #include "PerformanceOverlay/ABTesting/ABTestAggregator.h"
+#include "Utils/Input.h"
 #include "Utils/PerfUtils.h"
 #include <nlohmann/json.hpp>
 #include <optional>
@@ -172,6 +173,18 @@ struct PerformanceOverlay : OverlayFeature
 	static ABTestAggregator& GetABTestAggregator();
 
 	// ============================================================================
+	// PERFORMANCE LOGGING FUNCTIONS
+	// ============================================================================
+	void UpdateLoggingHotkeys();
+	void StartLogging();
+	void StopLogging();
+	void WriteLogFile(const std::string& content, const std::string& filename);
+	void DrawLoggingStatus();
+	void DrawLoggingSettings();
+	void ShowNotification(const std::string& message, const ImVec4& color, float duration = 3.0f);
+	void RenderNotifications();
+
+	// ============================================================================
 	// TABLE BUILDING AND RENDERING FUNCTIONS
 	// ============================================================================
 	void DrawDrawCallsTable(const std::vector<DrawCallRow>& mainRows, const std::vector<DrawCallRow>& summaryRows);
@@ -279,6 +292,10 @@ struct PerformanceOverlay : OverlayFeature
 		bool ShowBorder = true;
 		ImVec2 Position = ImVec2(10.f, 10.f);
 		bool PositionSet = false;
+
+		// Performance logging hotkeys (serialized manually via InputCombo::ComboList)
+		std::vector<InputCombo> LogStartKey = { InputCombo::Keyboard(VK_OEM_4) };  // [ key
+		std::vector<InputCombo> LogStopKey = { InputCombo::Keyboard(VK_OEM_6) };   // ] key
 	};
 	Settings settings;
 
@@ -310,4 +327,40 @@ private:
 	TestDataSource testDataSource = TestDataSource::None;
 	LARGE_INTEGER testDataLastUpdated = { 0 };
 	std::unordered_map<int, TestData> testData;
+
+	// ============================================================================
+	// PERFORMANCE LOGGING STATE
+	// ============================================================================
+	struct LoggingState
+	{
+		bool isLogging = false;
+		SYSTEMTIME startTime = {};
+		SYSTEMTIME stopTime = {};
+		LARGE_INTEGER startCounter = {};
+		LARGE_INTEGER lastFrameCounter = {};  // Dedicated QPC counter for frame time measurement
+		std::vector<float> frameTimes;
+	};
+	LoggingState loggingState;
+
+	// Hotkey edge detection
+	bool prevStartKeyDown = false;
+	bool prevStopKeyDown = false;
+
+	// Hotkey capture mode for settings UI
+	bool capturingLogStartKey = false;
+	bool capturingLogStopKey = false;
+	bool captureWaitFrame = false;       // Skip one frame after entering capture mode to drain stale input
+	uint32_t capturedKey = 0;            // Key detected during capture, committed on release
+	int startKeyCooldownFrames = 0;      // Frames to ignore start hotkey after rebinding
+	int stopKeyCooldownFrames = 0;       // Frames to ignore stop hotkey after rebinding
+
+	// Notification system
+	struct Notification
+	{
+		std::string message;
+		ImVec4 color;
+		float startTime;
+		float duration;
+	};
+	std::vector<Notification> notifications;
 };

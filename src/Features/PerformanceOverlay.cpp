@@ -215,12 +215,19 @@ void PerformanceOverlay::DrawSettings()
 
 		ImGui::Unindent();
 	}
+
+	// Performance Logging section (always visible, independent of overlay toggle)
+	DrawLoggingSettings();
 }
 
 void PerformanceOverlay::SaveSettings(json& j)
 {
 	// Persist all overlay settings to JSON
 	j = this->settings;  // uses NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT
+
+	// Manually serialize hotkey combos (not handled by the NLOHMANN macro)
+	InputCombo::ComboList::to_json(j["LogStartKey"], this->settings.LogStartKey);
+	InputCombo::ComboList::to_json(j["LogStopKey"], this->settings.LogStopKey);
 }
 
 void PerformanceOverlay::LoadSettings(json& j)
@@ -232,6 +239,15 @@ void PerformanceOverlay::LoadSettings(json& j)
 		// Fallback to defaults if JSON is invalid
 		this->settings = PerformanceOverlay::Settings{};
 	}
+
+	// Manually deserialize hotkey combos
+	if (j.contains("LogStartKey")) {
+		InputCombo::ComboList::from_json(j["LogStartKey"], this->settings.LogStartKey);
+	}
+	if (j.contains("LogStopKey")) {
+		InputCombo::ComboList::from_json(j["LogStopKey"], this->settings.LogStopKey);
+	}
+
 	// Ensure history buffers match loaded size
 	this->state.frameTimeHistory.Resize(this->settings.FrameHistorySize);
 	this->state.postFGFrameTimeHistory.Resize(this->settings.FrameHistorySize);
@@ -239,6 +255,12 @@ void PerformanceOverlay::LoadSettings(json& j)
 
 void PerformanceOverlay::RestoreDefaultSettings()
 {
+	// Stop any active logging session before resetting
+	if (loggingState.isLogging) {
+		loggingState.isLogging = false;
+		loggingState.frameTimes.clear();
+	}
+
 	this->settings = PerformanceOverlay::Settings{};
 	// Reset runtime buffers/state to match defaults
 	this->state.frameTimeHistory.Resize(this->settings.FrameHistorySize);
@@ -269,7 +291,29 @@ void PerformanceOverlay::DrawOverlay()
 	if (!globals::state || !menu) {
 		return;
 	}
+
+	// Always process logging hotkeys (even if overlay is hidden)
+	UpdateLoggingHotkeys();
+
+	// Always collect frame times for logging, even if overlay is hidden.
+	// Uses a dedicated QPC counter so logging works independently of the overlay.
+	if (loggingState.isLogging) {
+		LARGE_INTEGER now, freq;
+		QueryPerformanceCounter(&now);
+		QueryPerformanceFrequency(&freq);
+		int64_t elapsed = now.QuadPart - loggingState.lastFrameCounter.QuadPart;
+		loggingState.lastFrameCounter = now;
+		if (elapsed > 0) {
+			float frameTimeMs = static_cast<float>(elapsed) * 1000.0f / static_cast<float>(freq.QuadPart);
+			if (frameTimeMs > 0.0f && frameTimeMs < 1000.0f) {  // Sanity check: skip frames > 1s
+				loggingState.frameTimes.push_back(frameTimeMs);
+			}
+		}
+	}
+
 	if (!menu->overlayVisible) {
+		// Still render notifications when overlay is hidden
+		RenderNotifications();
 		return;
 	}
 	if (this->settings.ShowVRAM && (!menu->GetDXGIAdapter3())) {
@@ -392,12 +436,18 @@ void PerformanceOverlay::DrawOverlay()
 	ImGui::PopStyleVar();             // ItemSpacing
 	ImGui::SetWindowFontScale(1.0f);  // Reset font scale
 
+	// --- Logging Status ---
+	DrawLoggingStatus();
+
 	// --- A/B Test Section ---
 	DrawABTestSection(allRows);
 
 	ImGui::End();
 	ImGui::PopStyleVar();    // WindowBorderSize
 	ImGui::PopStyleColor();  // WindowBg
+
+	// Render notifications last so they appear on top of the overlay
+	RenderNotifications();
 }
 // ============================================================================
 // CORE PERFORMANCE DISPLAY FUNCTIONS
@@ -1903,6 +1953,404 @@ void PerformanceOverlay::UpdateSummaryTestData(float smoothedFrameTime, float ot
 // ============================================================================
 // PERFORMANCE OVERLAY STATE MANAGEMENT
 // ============================================================================
+
+// ============================================================================
+// PERFORMANCE LOGGING FUNCTIONS
+// ============================================================================
+
+static bool IsComboPressed(const std::vector<InputCombo>& combo)
+{
+	if (combo.empty())
+		return false;
+
+	// Check that the main key (last in combo) is pressed
+	const auto& mainKey = combo.back();
+	if (mainKey.GetDevice() != InputDeviceType::Keyboard)
+		return false;
+	if (!(GetAsyncKeyState(mainKey.GetKey()) & 0x8000))
+		return false;
+
+	// Check all modifier keys (everything except the last)
+	for (size_t i = 0; i + 1 < combo.size(); ++i) {
+		if (combo[i].GetDevice() != InputDeviceType::Keyboard)
+			return false;
+		if (!(GetAsyncKeyState(combo[i].GetKey()) & 0x8000))
+			return false;
+	}
+	return true;
+}
+
+void PerformanceOverlay::UpdateLoggingHotkeys()
+{
+	// Don't process hotkeys while the user is rebinding them in the settings UI
+	if (capturingLogStartKey || capturingLogStopKey) {
+		prevStartKeyDown = false;
+		prevStopKeyDown = false;
+		return;
+	}
+
+	// Tick down cooldowns after a rebind to prevent the bound key's release from
+	// immediately triggering the hotkey action
+	if (startKeyCooldownFrames > 0) {
+		--startKeyCooldownFrames;
+		prevStartKeyDown = IsComboPressed(settings.LogStartKey);
+	}
+	if (stopKeyCooldownFrames > 0) {
+		--stopKeyCooldownFrames;
+		prevStopKeyDown = IsComboPressed(settings.LogStopKey);
+	}
+
+	bool startDown = IsComboPressed(settings.LogStartKey);
+	bool stopDown = IsComboPressed(settings.LogStopKey);
+
+	// Detect key-up transitions (release)
+	if (startKeyCooldownFrames <= 0 && !startDown && prevStartKeyDown && !loggingState.isLogging) {
+		StartLogging();
+	}
+	if (stopKeyCooldownFrames <= 0 && !stopDown && prevStopKeyDown && loggingState.isLogging) {
+		StopLogging();
+	}
+
+	prevStartKeyDown = startDown;
+	prevStopKeyDown = stopDown;
+}
+
+void PerformanceOverlay::StartLogging()
+{
+	loggingState.isLogging = true;
+	loggingState.frameTimes.clear();
+	GetLocalTime(&loggingState.startTime);
+	QueryPerformanceCounter(&loggingState.startCounter);
+	loggingState.lastFrameCounter = loggingState.startCounter;  // Initialize frame timing
+
+	auto* menu = Menu::GetSingleton();
+	ImVec4 color = menu ? menu->GetTheme().StatusPalette.InfoColor : ImVec4(0.3f, 0.8f, 1.0f, 1.0f);
+	ShowNotification("Performance logging started", color);
+
+	logger::info("[PerformanceOverlay] Performance logging started");
+}
+
+void PerformanceOverlay::StopLogging()
+{
+	loggingState.isLogging = false;
+	GetLocalTime(&loggingState.stopTime);
+
+	LARGE_INTEGER stopCounter;
+	QueryPerformanceCounter(&stopCounter);
+
+	LARGE_INTEGER freq;
+	QueryPerformanceFrequency(&freq);
+
+	double durationSec = static_cast<double>(stopCounter.QuadPart - loggingState.startCounter.QuadPart) /
+	                     static_cast<double>(freq.QuadPart);
+
+	auto* menu = Menu::GetSingleton();
+	ImVec4 infoColor = menu ? menu->GetTheme().StatusPalette.InfoColor : ImVec4(0.3f, 0.8f, 1.0f, 1.0f);
+	ShowNotification(
+		std::format("Performance logging stopped ({:.1f}s, {} frames)", durationSec, loggingState.frameTimes.size()),
+		infoColor);
+
+	logger::info("[PerformanceOverlay] Performance logging stopped: {:.1f}s, {} frames",
+		durationSec, loggingState.frameTimes.size());
+
+	// Calculate metrics
+	size_t frameCount = loggingState.frameTimes.size();
+	if (frameCount == 0) {
+		ImVec4 warnColor = menu ? menu->GetTheme().StatusPalette.Warning : ImVec4(1.0f, 1.0f, 0.0f, 1.0f);
+		ShowNotification("No frames captured during logging session", warnColor);
+		return;
+	}
+
+	// Average frametime and FPS
+	double totalFrameTime = std::accumulate(loggingState.frameTimes.begin(), loggingState.frameTimes.end(), 0.0);
+	double avgFrameTimeMs = totalFrameTime / frameCount;
+	double avgFps = 1000.0 / avgFrameTimeMs;
+
+	// Sort frame times for percentile calculations (ascending: worst = highest frame time)
+	std::vector<float> sorted = loggingState.frameTimes;
+	std::sort(sorted.begin(), sorted.end(), std::greater<float>());
+
+	// 1% low: average of worst 1% frame times, converted to FPS
+	size_t count1pct = std::max<size_t>(1, frameCount / 100);
+	double sum1pct = std::accumulate(sorted.begin(), sorted.begin() + count1pct, 0.0);
+	double avg1pctFrameTime = sum1pct / count1pct;
+	double fps1pctLow = 1000.0 / avg1pctFrameTime;
+
+	// 0.1% low: average of worst 0.1% frame times, converted to FPS
+	size_t count01pct = std::max<size_t>(1, frameCount / 1000);
+	double sum01pct = std::accumulate(sorted.begin(), sorted.begin() + count01pct, 0.0);
+	double avg01pctFrameTime = sum01pct / count01pct;
+	double fps01pctLow = 1000.0 / avg01pctFrameTime;
+
+	// Format start/stop times
+	auto formatTime = [](const SYSTEMTIME& t) {
+		return std::format("{:04d}-{:02d}-{:02d} {:02d}:{:02d}:{:02d}",
+			t.wYear, t.wMonth, t.wDay, t.wHour, t.wMinute, t.wSecond);
+	};
+
+	auto formatTimeFilename = [](const SYSTEMTIME& t) {
+		return std::format("{:04d}-{:02d}-{:02d}_{:02d}-{:02d}-{:02d}",
+			t.wYear, t.wMonth, t.wDay, t.wHour, t.wMinute, t.wSecond);
+	};
+
+	// Build log content
+	std::string content;
+	content += "Community Shaders - Performance Metrics Log\n";
+	content += "============================================\n\n";
+	content += std::format("Start Time:       {}\n", formatTime(loggingState.startTime));
+	content += std::format("Stop Time:        {}\n", formatTime(loggingState.stopTime));
+	content += std::format("Duration:         {:.2f} seconds\n", durationSec);
+	content += std::format("Total Frames:     {}\n\n", frameCount);
+	content += "--- Performance Summary ---\n";
+	content += std::format("Average FPS:      {:.2f}\n", avgFps);
+	content += std::format("Average Frametime:{:.2f} ms\n", avgFrameTimeMs);
+	content += std::format("1%% Low FPS:       {:.2f}\n", fps1pctLow);
+	content += std::format("0.1%% Low FPS:     {:.2f}\n", fps01pctLow);
+	content += std::format("1%% Low Frametime: {:.2f} ms\n", avg1pctFrameTime);
+	content += std::format("0.1%% Low Frametime:{:.2f} ms\n", avg01pctFrameTime);
+
+	// Write file
+	std::string filename = formatTimeFilename(loggingState.startTime) + "_Metrics.log";
+	WriteLogFile(content, filename);
+
+	// Clear logging data
+	loggingState.frameTimes.clear();
+}
+
+void PerformanceOverlay::WriteLogFile(const std::string& content, const std::string& filename)
+{
+	auto* menu = Menu::GetSingleton();
+
+	try {
+		auto logsDir = Util::PathHelpers::GetCommunityShaderPath() / "Logs";
+		Util::FileHelpers::EnsureDirectoryExists(logsDir);
+
+		auto filePath = logsDir / filename;
+		std::ofstream file(filePath);
+		if (file.good()) {
+			file << content;
+			file.close();
+
+			ImVec4 successColor = menu ? menu->GetTheme().StatusPalette.SuccessColor : ImVec4(0.0f, 1.0f, 0.0f, 1.0f);
+			ShowNotification(std::format("Metrics saved: Logs/{}", filename), successColor, 5.0f);
+			logger::info("[PerformanceOverlay] Metrics log written to {}", filePath.string());
+		} else {
+			ImVec4 errorColor = menu ? menu->GetTheme().StatusPalette.Error : ImVec4(1.0f, 0.0f, 0.0f, 1.0f);
+			ShowNotification("Failed to write metrics log file", errorColor, 5.0f);
+			logger::error("[PerformanceOverlay] Failed to open file for writing: {}", filePath.string());
+		}
+	} catch (const std::exception& e) {
+		ImVec4 errorColor = menu ? menu->GetTheme().StatusPalette.Error : ImVec4(1.0f, 0.0f, 0.0f, 1.0f);
+		ShowNotification(std::format("Error writing metrics log: {}", e.what()), errorColor, 5.0f);
+		logger::error("[PerformanceOverlay] Exception writing metrics log: {}", e.what());
+	}
+}
+
+void PerformanceOverlay::DrawLoggingStatus()
+{
+	if (!loggingState.isLogging)
+		return;
+
+	// Calculate elapsed time
+	LARGE_INTEGER now, freq;
+	QueryPerformanceCounter(&now);
+	QueryPerformanceFrequency(&freq);
+	double elapsed = static_cast<double>(now.QuadPart - loggingState.startCounter.QuadPart) /
+	                 static_cast<double>(freq.QuadPart);
+
+	ImGui::Separator();
+
+	ImGui::TextUnformatted("Metrics Logging:");
+	ImGui::SameLine();
+
+	// Pulsing red color for "Actively recording..." indicator
+	float pulse = (std::sin(static_cast<float>(ImGui::GetTime()) * 4.0f) + 1.0f) * 0.5f;
+	ImVec4 recordColor = ImVec4(1.0f, pulse * 0.3f, pulse * 0.3f, 1.0f);
+
+	ImGui::PushStyleColor(ImGuiCol_Text, recordColor);
+	ImGui::TextUnformatted("Actively recording...");
+	ImGui::PopStyleColor();
+
+	ImGui::Text("  Duration: %.1fs | Frames: %zu", elapsed, loggingState.frameTimes.size());
+}
+
+void PerformanceOverlay::DrawLoggingSettings()
+{
+	ImGui::Spacing();
+	ImGui::Spacing();
+	ImGui::TextUnformatted("Performance Logging");
+	ImGui::Separator();
+
+	if (auto _tt = Util::HoverTooltipWrapper()) {
+		ImGui::Text("Record performance metrics over a period of time.\nPress the Start key to begin, and the Stop key to end.\nA log file with metrics will be saved automatically.");
+	}
+
+	// Status indicator
+	if (loggingState.isLogging) {
+		ImGui::TextColored(ImVec4(1.0f, 0.3f, 0.3f, 1.0f), "Status: Recording...");
+	} else {
+		ImGui::TextDisabled("Status: Idle");
+	}
+
+	// Start key configuration
+	auto* menu = Menu::GetSingleton();
+	const auto& themeSettings = menu ? menu->GetTheme() : Menu::ThemeSettings{};
+
+	std::string startKeyLabel = Util::Input::KeyIdToString(settings.LogStartKey);
+	if (capturingLogStartKey) {
+		ImGui::Button("Press a key...");
+	} else {
+		if (ImGui::Button(std::format("Start Key: {}", startKeyLabel).c_str())) {
+			capturingLogStartKey = true;
+			capturingLogStopKey = false;
+			captureWaitFrame = true;
+		}
+	}
+	if (auto _tt = Util::HoverTooltipWrapper()) {
+		ImGui::Text("Click to rebind. Current: ");
+		ImGui::SameLine();
+		ImGui::TextColored(themeSettings.StatusPalette.CurrentHotkey, "%s", startKeyLabel.c_str());
+	}
+
+	// Stop key configuration
+	std::string stopKeyLabel = Util::Input::KeyIdToString(settings.LogStopKey);
+	if (capturingLogStopKey) {
+		ImGui::Button("Press a key...");
+	} else {
+		if (ImGui::Button(std::format("Stop Key: {}", stopKeyLabel).c_str())) {
+			capturingLogStopKey = true;
+			capturingLogStartKey = false;
+			captureWaitFrame = true;
+		}
+	}
+	if (auto _tt = Util::HoverTooltipWrapper()) {
+		ImGui::Text("Click to rebind. Current: ");
+		ImGui::SameLine();
+		ImGui::TextColored(themeSettings.StatusPalette.CurrentHotkey, "%s", stopKeyLabel.c_str());
+	}
+
+	// Handle key capture: detect key press, then commit on release to avoid
+	// the same keypress immediately triggering the newly-bound hotkey action.
+	if (capturingLogStartKey || capturingLogStopKey) {
+		// On the first frame of capture, drain stale transition bits and skip
+		if (captureWaitFrame) {
+			for (int vk = 1; vk < 256; ++vk)
+				GetAsyncKeyState(vk);
+			captureWaitFrame = false;
+		} else if (capturedKey != 0) {
+			// Phase 2: A key was detected - wait for it to be released before committing
+			if (!(GetAsyncKeyState(capturedKey) & 0x8000)) {
+				// Key released - build the combo with modifiers captured at press time
+				// and commit the binding
+				std::vector<InputCombo> combo;
+				if (GetAsyncKeyState(VK_CONTROL) & 0x8000)
+					combo.push_back(InputCombo::Keyboard(VK_CONTROL));
+				if (GetAsyncKeyState(VK_SHIFT) & 0x8000)
+					combo.push_back(InputCombo::Keyboard(VK_SHIFT));
+				if (GetAsyncKeyState(VK_MENU) & 0x8000)
+					combo.push_back(InputCombo::Keyboard(VK_MENU));
+				combo.push_back(InputCombo::Keyboard(capturedKey));
+
+				if (capturingLogStartKey) {
+					settings.LogStartKey = combo;
+					capturingLogStartKey = false;
+					// Cooldown prevents the release edge from firing the hotkey.
+					// Need enough frames for the key-up to be fully processed.
+					startKeyCooldownFrames = 10;
+				} else {
+					settings.LogStopKey = combo;
+					capturingLogStopKey = false;
+					stopKeyCooldownFrames = 10;
+				}
+				capturedKey = 0;
+			}
+		} else {
+			// Phase 1: Scan for a non-modifier keyboard key being held down
+			for (int vk = 1; vk < 256; ++vk) {
+				// Skip mouse buttons and modifier-only keys
+				if (vk == VK_LBUTTON || vk == VK_RBUTTON || vk == VK_MBUTTON ||
+					vk == VK_XBUTTON1 || vk == VK_XBUTTON2)
+					continue;
+				if (vk == VK_CONTROL || vk == VK_LCONTROL || vk == VK_RCONTROL ||
+					vk == VK_SHIFT || vk == VK_LSHIFT || vk == VK_RSHIFT ||
+					vk == VK_MENU || vk == VK_LMENU || vk == VK_RMENU)
+					continue;
+
+				if (GetAsyncKeyState(vk) & 0x8000) {  // Key is currently held down
+					capturedKey = vk;
+					break;
+				}
+			}
+		}
+	}
+}
+
+void PerformanceOverlay::ShowNotification(const std::string& message, const ImVec4& color, float duration)
+{
+	if (!ImGui::GetCurrentContext())
+		return;
+
+	Notification notif;
+	notif.message = message;
+	notif.color = color;
+	notif.startTime = static_cast<float>(ImGui::GetTime());
+	notif.duration = duration;
+	notifications.push_back(notif);
+}
+
+void PerformanceOverlay::RenderNotifications()
+{
+	if (!ImGui::GetCurrentContext() || notifications.empty())
+		return;
+
+	float currentTime = static_cast<float>(ImGui::GetTime());
+	float yOffset = 10.0f;
+
+	// Remove expired notifications
+	notifications.erase(
+		std::remove_if(notifications.begin(), notifications.end(),
+			[currentTime](const Notification& n) { return currentTime - n.startTime > n.duration; }),
+		notifications.end());
+
+	// Render active notifications at top-left with solid background, on top of all other windows
+	for (auto& notif : notifications) {
+		float elapsed = currentTime - notif.startTime;
+		float fadeStart = notif.duration - 0.5f;
+		float alpha = 1.0f;
+
+		if (elapsed > fadeStart) {
+			alpha = 1.0f - ((elapsed - fadeStart) / 0.5f);
+		}
+
+		ImGui::SetNextWindowPos(ImVec2(10.0f, yOffset));
+		ImGui::SetNextWindowBgAlpha(alpha);  // Solid background, fades with notification
+		ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(15.0f, 10.0f));
+		ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 6.0f);
+		ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.1f, 0.1f, 0.1f, 1.0f));
+		ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(0.4f, 0.4f, 0.4f, alpha));
+		ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 1.0f);
+
+		std::string windowId = std::format("##PerfLogNotif{}", (uintptr_t)&notif);
+		if (ImGui::Begin(windowId.c_str(), nullptr,
+				ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings |
+					ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoFocusOnAppearing |
+					ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoDocking | ImGuiWindowFlags_NoInputs)) {
+			// Bring notification window to front of all other ImGui windows
+			ImGui::BringWindowToDisplayFront(ImGui::GetCurrentWindow());
+
+			ImVec4 colorWithAlpha = notif.color;
+			colorWithAlpha.w *= alpha;
+			ImGui::PushStyleColor(ImGuiCol_Text, colorWithAlpha);
+			ImGui::TextUnformatted(notif.message.c_str());
+			ImGui::PopStyleColor();
+
+			yOffset += ImGui::GetWindowHeight() + 5.0f;
+		}
+		ImGui::End();
+		ImGui::PopStyleColor(2);  // WindowBg, Border
+		ImGui::PopStyleVar(3);    // WindowPadding, WindowRounding, WindowBorderSize
+	}
+}
 
 void PerformanceOverlay::UpdateGraphValues()
 {
