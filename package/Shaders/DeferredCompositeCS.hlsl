@@ -240,29 +240,36 @@ void SampleSSGISpecular(uint2 pixCoord, sh2 lobe, inout float ao, out float3 il,
 #	if defined(INTERIOR)
 			float3 specularIrradiance = EnvTexture.SampleLevel(LinearSampler, R, level);
 			float specularIrradianceLuminance = Color::RGBToLuminance(EnvTexture.SampleLevel(LinearSampler, R, 15));
-			specularIrradiance = (specularIrradiance / max(specularIrradianceLuminance, 0.001)) * directionalAmbientColorSpecular;
+
+			// Clamp min luminance to ambient 
+			specularIrradiance = (specularIrradiance / max(specularIrradianceLuminance, 0.001)) * max(specularIrradianceLuminance, directionalAmbientColorSpecular);
 			finalIrradiance = Color::IrradianceToLinear(specularIrradiance);
 #	elif defined(SKYLIGHTING)
 			float3 specularIrradianceReflections = 0.0;
 			if (skylightingSpecular > 0.0) {
 				specularIrradianceReflections = EnvReflectionsTexture.SampleLevel(LinearSampler, R, level);
 				float lum = Color::RGBToLuminance(EnvReflectionsTexture.SampleLevel(LinearSampler, R, 15));
-				specularIrradianceReflections = (specularIrradianceReflections / max(lum, 0.001)) * directionalAmbientColorSpecular;
+				
+				// Clamp min luminance to ambient 
+				specularIrradianceReflections = (specularIrradianceReflections / max(lum, 0.001)) * max(lum, directionalAmbientColorSpecular);
 				specularIrradianceReflections = Color::IrradianceToLinear(specularIrradianceReflections);
 			}
 			float3 specularIrradiance = 0.0;
 			if (skylightingSpecular < 1.0) {
 				specularIrradiance = EnvTexture.SampleLevel(LinearSampler, R, level);
 				float lum = Color::RGBToLuminance(EnvTexture.SampleLevel(LinearSampler, R, 15));
-				float dalcScaled = Color::IrradianceToGamma(Color::IrradianceToLinear(directionalAmbientColorSpecular) * skylightingSpecular);
-				specularIrradiance = (specularIrradiance / max(lum, 0.001)) * dalcScaled;
+				
+				// Clamp min luminance to ambient 
+				specularIrradiance = (specularIrradiance / max(lum, 0.001)) * max(lum, directionalAmbientColorSpecular);
 				specularIrradiance = Color::IrradianceToLinear(specularIrradiance);
 			}
 			finalIrradiance = lerp(specularIrradiance, specularIrradianceReflections, skylightingSpecular);
 #	else
 			float3 specularIrradiance = EnvReflectionsTexture.SampleLevel(LinearSampler, R, level);
 			float specularIrradianceLuminance = Color::RGBToLuminance(EnvReflectionsTexture.SampleLevel(LinearSampler, R, 15));
-			specularIrradiance = (specularIrradiance / max(specularIrradianceLuminance, 0.001)) * directionalAmbientColorSpecular;
+
+			// Clamp min luminance to ambient 
+			specularIrradiance = (specularIrradiance / max(specularIrradianceLuminance, 0.001)) * max(specularIrradianceLuminance, directionalAmbientColorSpecular);
 			finalIrradiance = Color::IrradianceToLinear(specularIrradiance);
 #	endif
 		}
