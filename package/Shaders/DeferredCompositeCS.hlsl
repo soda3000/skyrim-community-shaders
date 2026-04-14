@@ -48,12 +48,12 @@ Texture2D<float4> SsgiSpecularTexture : register(t13);
 
 void SampleSSGI(uint2 pixCoord, float3 normalWS, out float ao, out float3 il)
 {
-	ao = 1 - SsgiAoTexture[pixCoord];
+	ao = 1 - SsgiAoTexture[pixCoord].x;
 	float4 ssgiIlYSh = SsgiYTexture[pixCoord];
 	// without ZH hallucination
 	// float ssgiIlY = SphericalHarmonics::FuncProductIntegral(ssgiIlYSh, SphericalHarmonics::EvaluateCosineLobe(normalWS));
 	float ssgiIlY = SphericalHarmonics::SHHallucinateZH3Irradiance(ssgiIlYSh, normalWS);
-	float2 ssgiIlCoCg = SsgiCoCgTexture[pixCoord];
+	float2 ssgiIlCoCg = SsgiCoCgTexture[pixCoord].xy;
 	il = max(0, Color::YCoCgToRGB(float3(ssgiIlY, ssgiIlCoCg)));
 }
 
@@ -204,6 +204,8 @@ void SampleSSGISpecular(uint2 pixCoord, sh2 lobe, inout float ao, out float3 il,
 		skylightingSpecular = Skylighting::mixSpecular(SharedData::skylightingSettings, skylightingSpecular);
 #	endif
 
+	float3 envBias = 0;
+
 #	if defined(IBL)
 		if (SharedData::iblSettings.EnableIBL) {
 			float3 envSample = EnvTexture.SampleLevel(LinearSampler, R, level);
@@ -272,6 +274,10 @@ void SampleSSGISpecular(uint2 pixCoord, sh2 lobe, inout float ao, out float3 il,
 			specularIrradiance = (specularIrradiance / max(specularIrradianceLuminance, 0.001)) * max(specularIrradianceLuminance, directionalAmbientColorSpecular);
 			finalIrradiance = Color::IrradianceToLinear(specularIrradiance);
 #	endif
+			float NdotV = saturate(dot(normalWS, V));
+			float2 envBRDF = BRDF::EnvBRDFApproxHirvonen(roughness, NdotV);
+			envBias = finalIrradiance * envBRDF.y;
+			finalIrradiance *= envBRDF.x;
 		}
 
 #	if defined(SSGI)
@@ -280,13 +286,15 @@ void SampleSSGISpecular(uint2 pixCoord, sh2 lobe, inout float ao, out float3 il,
 
 		finalIrradiance = (finalIrradiance * ssgiAo);
 
+		envBias *= ssgiAo;
+
 		ssgiIlSpecular = Color::RGBToYCoCg(ssgiIlSpecular);
 		ssgiIlSpecular = max(0, Color::YCoCgToRGB(float3(ssgiIlSpecular.x, lerp(ssgiIlSpecular.yz, Color::RGBToYCoCg(finalIrradiance).yz, 0.5))));
 
 		finalIrradiance += ssgiIlSpecular;
 #	endif
 
-		color += reflectance * finalIrradiance;
+		color += reflectance * finalIrradiance + envBias;
 	}
 
 #endif
