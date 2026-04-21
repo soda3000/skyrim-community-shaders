@@ -308,10 +308,10 @@ void HiZOcclusion::DrawSettings()
 
 				// Detailed draw call breakdown
 				ImGui::Spacing();
-				ImGui::Text("Draw Call Breakdown:");
-				ImGui::Text("  Shadow/Depth: %u / %u culled", displayStats.utilityCallsCulled, displayStats.utilityCallsTotal);
-				ImGui::Text("  Particles/FX: %u / %u culled", displayStats.particleCallsCulled, displayStats.particleCallsTotal);
-				ImGui::Text("  Other: %u / %u culled", displayStats.otherCallsCulled, displayStats.otherCallsTotal);
+				ImGui::Text("Culled Draw Call Breakdown:");
+				ImGui::Text("  Shadow/Depth: %u culled", displayStats.utilityCallsCulled);
+				ImGui::Text("  Particles/FX: %u culled", displayStats.particleCallsCulled);
+				ImGui::Text("  Other: %u culled", displayStats.otherCallsCulled);
 
 				// Timing
 				ImGui::Spacing();
@@ -498,6 +498,7 @@ void HiZOcclusion::Reset()
         if (wasEnabled) {
             // Restore all app-culled geometry and clear occlusion tracking
             ClearOcclusionState();
+            /*
             if (!unCullNextFrame.empty()) {
                 for (auto& geometry : unCullNextFrame) {
                     if (geometry) {
@@ -506,6 +507,7 @@ void HiZOcclusion::Reset()
                 }
                 unCullNextFrame.clear();
             }
+            */
             // Release and clear all resources
             ReleaseBoundsOverlayResources();
             ReleaseDebugBuffer();
@@ -1584,7 +1586,7 @@ bool HiZOcclusion::IsLODGeometry(RE::BSGeometry* geometry)
         return false;
     }
     
-    auto shaderProperty = static_cast<RE::BSShaderProperty*>(geometry->GetGeometryRuntimeData().properties[1].get());
+    auto shaderProperty = static_cast<RE::BSShaderProperty*>(geometry->GetGeometryRuntimeData().shaderProperty.get());
     if (!shaderProperty) {
         return false;
     }
@@ -1612,52 +1614,47 @@ bool HiZOcclusion::IsPlayerCharacterGeometry(RE::BSGeometry* geometry)
 
 void HiZOcclusion::MarkGeometryOccluded(RE::BSGeometry* geometry)
 {
-    if (!geometry) {
-        return;
-    }
-    // Set flag bit for O(1) lookup
-    auto& flags = geometry->GetFlags();
-    flags.set(static_cast<RE::NiAVObject::Flag>(kOccludedFlag));
-    // Also add to set for iteration in ClearOcclusionState
-    occludedGeometry.insert(geometry);
-    // Increment consecutive count; app-cull once threshold is reached
+    if (!geometry) return;
+
+    // Track consecutive frames for conservative culling
     uint32_t& count = consecutiveOccludedCount[geometry];
     ++count;
+    
     if (count >= settings.consecutiveOccludedThreshold) {
-        geometry->SetAppCulled(true);
+        auto& flags = geometry->GetFlags();
+        flags.set(static_cast<RE::NiAVObject::Flag>(kOccludedFlag));
+        occludedGeometry.insert(geometry);
     }
 }
 
 void HiZOcclusion::MarkGeometryVisible(RE::BSGeometry* geometry)
 {
-    if (!geometry) {
-        return;
-    }
-    // Clear flag bit
+    if (!geometry) return;
+    
     auto& flags = geometry->GetFlags();
     auto newFlags = static_cast<RE::NiAVObject::Flag>(flags.underlying() & ~kOccludedFlag);
     flags = stl::enumeration<RE::NiAVObject::Flag, uint32_t>(newFlags);
-    // Remove from set
+    
     occludedGeometry.erase(geometry);
-    // Reset consecutive count and unconditionally restore app-cull state
-    if (consecutiveOccludedCount.erase(geometry) > 0) {
-        geometry->SetAppCulled(false);
-    }
+    consecutiveOccludedCount.erase(geometry);
+    // Don't call SetAppCulled - object will render normally via hook
 }
 
 void HiZOcclusion::ClearOcclusionState()
 {
-    // Clear flag on all occluded geometry and restore app-cull state where needed
     for (auto* geo : occludedGeometry) {
         if (geo) {
             auto& flags = geo->GetFlags();
             auto newFlags = static_cast<RE::NiAVObject::Flag>(flags.underlying() & ~kOccludedFlag);
             flags = stl::enumeration<RE::NiAVObject::Flag, uint32_t>(newFlags);
-            if (consecutiveOccludedCount.count(geo)) {
-                geo->SetAppCulled(false);
-            }
         }
     }
     occludedGeometry.clear();
     consecutiveOccludedCount.clear();
+}
+
+bool HiZOcclusion::IsGeometryOccluded(RE::BSGeometry* geometry) const
+{
+    if (!geometry) return false;
+    return (geometry->GetFlags().underlying() & kOccludedFlag) != 0;
 }

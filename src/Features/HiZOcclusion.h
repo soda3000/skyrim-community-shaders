@@ -206,6 +206,9 @@ struct HiZOcclusion : OverlayFeature
     // Accessors for culling step
     inline ID3D11ShaderResourceView* GetHiZSRV() const { return hiZSRV; }
     inline uint32_t GetHiZMipCount() const { return hiZMipCount; }
+
+    // Check if a given geometry was determined to be occluded
+    bool IsGeometryOccluded(RE::BSGeometry* geometry) const;
     
     // Debugging result struct (x = object depth, y = max scene depth)
 
