@@ -853,14 +853,16 @@ namespace Hooks
 		static void thunk(RE::BSRenderPass* pass, uint32_t technique, bool alphaTest, uint32_t renderFlags)
 		{
 			// Collect geometry for HIZ
-			if (pass->geometry && globals::features::hiZOcclusion.settings.enableHiZCulling) {
-				if (!globals::state->renderingShadowmaps && 
-					!globals::state->renderingDepthPrepass &&
+			if (pass->geometry && globals::features::hiZOcclusion.settings.enableHiZCulling
+				&& (globals::features::hiZOcclusion.settings.cullLODObjects || !globals::features::hiZOcclusion.IsLODGeometry(pass->geometry))) 
+			{
+				if (!globals::state->renderingDepthPrepass &&
 					!globals::state->activeReflections &&
 					pass->shader &&
 					pass->shader->shaderType.get() != RE::BSShader::Type::Grass &&
 					pass->shader->shaderType.get() != RE::BSShader::Type::Sky &&
 					pass->shader->shaderType.get() != RE::BSShader::Type::Water &&
+					pass->shader->shaderType.get() != RE::BSShader::Type::DistantTree &&
 					pass->geometry && 
 					pass->geometry->worldBound.radius > 0.0f) {
 					std::lock_guard<std::mutex> lock(globals::features::hiZOcclusion.pendingGeometryMutex);
@@ -883,6 +885,8 @@ namespace Hooks
 
 			// Check if this geometry is in the occluded set
 			if (pass->geometry && globals::features::hiZOcclusion.settings.enableHiZCulling
+				&& pass->shader->shaderType.get() != RE::BSShader::Type::DistantTree
+				&& (globals::features::hiZOcclusion.settings.cullLODObjects || !globals::features::hiZOcclusion.IsLODGeometry(pass->geometry))
 				&& globals::features::hiZOcclusion.IsGeometryOccluded(pass->geometry)) {
 				
 				// Skip rendering - increment stats but don't call original function
