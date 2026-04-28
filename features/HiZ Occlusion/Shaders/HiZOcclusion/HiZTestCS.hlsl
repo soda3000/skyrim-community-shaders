@@ -134,6 +134,13 @@ float2 ViewToHiZUV(float3 viewPos) {
 // =============================================================================
 // Debug Visualization (optional, controlled by overlaySettings)
 // =============================================================================
+// NOTE: All debug/overlay code is wrapped in #ifdef ENABLE_DEBUG_OVERLAY.
+// The production shader variant compiles without this define, dead-stripping
+// all overlay drawing functions and DebugOutput/DebugOverlay UAVs from the
+// compiled binary. This removes register pressure and instruction count.
+// =============================================================================
+
+#ifdef ENABLE_DEBUG_OVERLAY
 
 // Debug output buffer - structured for comprehensive debugging
 struct DebugData {
@@ -305,6 +312,8 @@ void DrawBounds(uint geometryIndex, float3 centerVS, float radius) {
     DrawRectOutline(minTex0, maxTex0, baseW, baseH, color, thickness);
 }
 
+#endif // ENABLE_DEBUG_OVERLAY
+
 // =============================================================================
 // Mip Level Selection
 // =============================================================================
@@ -358,9 +367,11 @@ float GetMipLevel(float3 centerVS, float radius) {
 /// @param centerVS Object center in view space (for debug rendering)
 /// @param radius Object radius (for debug rendering)
 void ReportVisibleGeometry(int geometryIndex, float3 centerVS, float radius) {
+#ifdef ENABLE_DEBUG_OVERLAY
     if (overlaySettings.x != 0 && geometryIndex < overlaySettings.y) {
         DrawBounds(geometryIndex, centerVS, radius);
     }
+#endif
 }
 
 // =============================================================================
@@ -400,9 +411,11 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
     // =========================================================================
     if (radius <= 0.0) {
         VisibilityResults[geometryIndex] = -1;  // Visible: invalid radius
+#ifdef ENABLE_DEBUG_OVERLAY
         if (overlaySettings.x != 0 && geometryIndex < (uint)overlaySettings.y) {
             DrawBounds(geometryIndex, centerVS, radius);
         }
+#endif
         return;
     }
 
@@ -412,9 +425,11 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
     float centerDist = length(centerVS);
     if (centerDist <= radius) {
         VisibilityResults[geometryIndex] = -2;  // Visible: camera inside bounds
+#ifdef ENABLE_DEBUG_OVERLAY
         if (overlaySettings.x != 0 && geometryIndex < (uint)overlaySettings.y) {
             DrawBounds(geometryIndex, centerVS, radius);
         }
+#endif
         return;
     }
 
@@ -533,15 +548,19 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
     // the object should not be culled.
     if (!anyPointOnScreen) {
         VisibilityResults[geometryIndex] = 1;  // Culled: frustum (behind camera)
+#ifdef ENABLE_DEBUG_OVERLAY
         if (overlaySettings.x != 0 && geometryIndex < (uint)overlaySettings.y) {
             DrawBounds(geometryIndex, centerVS, radius);
         }
+#endif
         return;
     } else if (anyPointBehindCamera) {
         VisibilityResults[geometryIndex] = -2;  // Visible: camera inside bounds
+#ifdef ENABLE_DEBUG_OVERLAY
         if (overlaySettings.x != 0 && geometryIndex < (uint)overlaySettings.y) {
             DrawBounds(geometryIndex, centerVS, radius);
         }
+#endif
         return;
     }
 
@@ -554,7 +573,9 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
     // NOTE: This result will be read back by the CPU 2-3 frames later due to
     // async GPU readback. The object will be re-tested each frame while culled.
     VisibilityResults[geometryIndex] = 2;  // Culled: occluded (all depth tests failed)
+#ifdef ENABLE_DEBUG_OVERLAY
     if (overlaySettings.x != 0 && geometryIndex < (uint)overlaySettings.y) {
         DrawBounds(geometryIndex, centerVS, radius);
     }
+#endif
 }

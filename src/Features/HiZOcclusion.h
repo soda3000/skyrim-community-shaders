@@ -141,7 +141,8 @@ struct HiZOcclusion : OverlayFeature
     // Shaders for building the Hi-Z pyramid
     ID3D11ComputeShader* hiZBuildLevel0CS = nullptr;             // depth -> mip 0
     ID3D11ComputeShader* hiZDownsampleCS = nullptr;              // mip n -> mip n+1 (min-reduction)
-    ID3D11ComputeShader* hiZTestCS = nullptr;                    // GPU-based occlusion testing
+    ID3D11ComputeShader* hiZTestCS = nullptr;                    // GPU-based occlusion testing (production, no debug overlay)
+    ID3D11ComputeShader* hiZTestCSDebug = nullptr;               // GPU-based occlusion testing (with debug overlay)
     
     // GPU culling resources
     ID3D11Buffer* geometryBoundsBuffer = nullptr;                // Input: geometry bounding spheres
@@ -152,7 +153,6 @@ struct HiZOcclusion : OverlayFeature
     ID3D11UnorderedAccessView* debugResultsUAV = nullptr;
     ID3D11Buffer* hiZTestParamsBuffer = nullptr;                 // Constant buffer for test parameters
     
-    ID3D11Buffer* debugReadbackBuffer = nullptr;
     ID3D11Buffer* visibilityReadbackBuffer = nullptr;
     uint32_t readbackFrameIndex = 0;
 

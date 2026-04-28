@@ -46,6 +46,7 @@ HiZOcclusion::~HiZOcclusion()
     if (hiZBuildLevel0CS) { hiZBuildLevel0CS->Release(); hiZBuildLevel0CS = nullptr; }
     if (hiZDownsampleCS) { hiZDownsampleCS->Release(); hiZDownsampleCS = nullptr; }
     if (hiZTestCS) { hiZTestCS->Release(); hiZTestCS = nullptr; }
+    if (hiZTestCSDebug) { hiZTestCSDebug->Release(); hiZTestCSDebug = nullptr; }
     
     // Release GPU culling resources
     if (geometryBoundsSRV) { geometryBoundsSRV->Release(); geometryBoundsSRV = nullptr; }
@@ -74,7 +75,6 @@ HiZOcclusion::~HiZOcclusion()
     ReleaseBoundsOverlayResources();
     
     // Release readback buffers
-    if (debugReadbackBuffer) { debugReadbackBuffer->Release(); debugReadbackBuffer = nullptr; }
     if (visibilityReadbackBuffer) { visibilityReadbackBuffer->Release(); visibilityReadbackBuffer = nullptr; }
 
     // Release GPU timestamp queries
@@ -459,10 +459,11 @@ void HiZOcclusion::InitShaders()
         }
     }
     
+    // Compile production shader variant (no debug overlay code)
     if (!hiZTestCS) {
         try {
             hiZTestCS = (ID3D11ComputeShader*)Util::CompileShader(L"Data\\Shaders\\HiZOcclusion\\HiZTestCS.hlsl", shaderDefines, "cs_5_0");
-            if (!hiZTestCS) { 
+            if (!hiZTestCS) {
                 status = HiZStatus::Error;
                 statusMessage = "Failed to compile HiZTestCS";
                 logger::error("{}", statusMessage);
@@ -473,6 +474,23 @@ void HiZOcclusion::InitShaders()
             statusMessage = std::string("HiZTestCS compilation exception: ") + e.what();
             logger::error("{}", statusMessage);
             return;
+        }
+    }
+
+    // Compile debug shader variant (includes overlay visualization)
+    // Only compiled when needed to avoid unnecessary shader bloat in production
+    if (!hiZTestCSDebug && (settings.debugMode || settings.enableBoundsViewer)) {
+        auto debugDefines = shaderDefines;
+        debugDefines.push_back({ "ENABLE_DEBUG_OVERLAY", nullptr });
+        try {
+            hiZTestCSDebug = (ID3D11ComputeShader*)Util::CompileShader(L"Data\\Shaders\\HiZOcclusion\\HiZTestCS.hlsl", debugDefines, "cs_5_0");
+            if (!hiZTestCSDebug) {
+                logger::warn("Failed to compile HiZTestCSDebug (non-fatal, debug overlay unavailable)");
+                // Non-fatal: production shader still works
+            }
+        } catch (const std::exception& e) {
+            logger::warn("HiZTestCSDebug compilation exception (non-fatal): {}", e.what());
+            // Non-fatal: production shader still works
         }
     }
     
@@ -490,6 +508,7 @@ void HiZOcclusion::ClearShaderCache()
     if (hiZBuildLevel0CS) { hiZBuildLevel0CS->Release(); hiZBuildLevel0CS = nullptr; }
     if (hiZDownsampleCS) { hiZDownsampleCS->Release(); hiZDownsampleCS = nullptr; }
     if (hiZTestCS) { hiZTestCS->Release(); hiZTestCS = nullptr; }
+    if (hiZTestCSDebug) { hiZTestCSDebug->Release(); hiZTestCSDebug = nullptr; }
 }
 
 void HiZOcclusion::Reset()
@@ -1143,14 +1162,6 @@ void HiZOcclusion::CreateDebugBuffer()
     dbgUavDesc.Buffer.NumElements = debugElementCount;
     device->CreateUnorderedAccessView(debugResultsBuffer, &dbgUavDesc, &debugResultsUAV);
     
-    // Create double-buffered staging buffers for debug readback
-    D3D11_BUFFER_DESC dbgReadback = {};
-    dbgReadback.ByteWidth = dbgDesc.ByteWidth;
-    dbgReadback.Usage = D3D11_USAGE_STAGING;
-    dbgReadback.BindFlags = 0;
-    dbgReadback.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
-    
-    device->CreateBuffer(&dbgReadback, nullptr, &debugReadbackBuffer);
 }
 
 void HiZOcclusion::ReleaseDebugBuffer()
@@ -1162,10 +1173,6 @@ void HiZOcclusion::ReleaseDebugBuffer()
     if (debugResultsUAV) {
         debugResultsUAV->Release();
         debugResultsUAV = nullptr;
-    }
-    if (debugReadbackBuffer) {
-        debugReadbackBuffer->Release();
-        debugReadbackBuffer = nullptr;
     }
 }
 
@@ -1361,10 +1368,10 @@ void HiZOcclusion::UnbindD3DResources()
     ID3D11Buffer* nullCBs[1] = { nullptr };
     ID3D11SamplerState* nullSamplers[1] = { nullptr };
     ID3D11ShaderResourceView* nullSRVs[2] = { nullptr, nullptr };
-    ID3D11UnorderedAccessView* nullUAV[1] = { nullptr };
+    ID3D11UnorderedAccessView* nullUAV[3] = { nullptr, nullptr, nullptr };
     
     context->CSSetShaderResources(0, 2, nullSRVs); // t0 and t1
-    context->CSSetUnorderedAccessViews(0, 1, nullUAV, nullptr);
+    context->CSSetUnorderedAccessViews(0, 3, nullUAV, nullptr); // u0, u1, u2
     context->CSSetShader(nullptr, nullptr, 0);
     context->CSSetSamplers(0, 1, nullSamplers);
     context->CSSetConstantBuffers(0, 1, nullCBs);
@@ -1397,24 +1404,33 @@ void HiZOcclusion::DispatchComputeShader()
     {
         D3D11_MAPPED_SUBRESOURCE mapped{};
         HiZSettings params{};
-        params.hiZParams = DirectX::XMFLOAT4(static_cast<float>(hiZMipCount), settings.conservativeBias, static_cast<float>(numGeometry), static_cast<float>(settings.debugMode));
+        params.hiZParams = DirectX::XMFLOAT4(
+            static_cast<float>(hiZMipCount),
+            settings.conservativeBias,
+            static_cast<float>(numGeometry),
+            settings.debugMode ? 1.0f : 0.0f);
         // Use average eye position in VR for more accurate occlusion testing
         // This ensures objects visible to either eye are not incorrectly culled
         auto eyePos = REL::Module::IsVR() ? Util::GetAverageEyePosition() : Util::GetEyePosition(0);
         params.cameraWorldPos = DirectX::XMFLOAT3(eyePos.x, eyePos.y, eyePos.z);
-        params.overlaySettings = DirectX::XMFLOAT4(
-            settings.enableBoundsViewer ? 1.0f : 0.0f,
-            static_cast<float>(settings.boundsMaxObjects),
-            0.0f, 0.0f);
-        
-        // Pack color toggles into float4 (7 bits used)
-        float toggleBits = 0.0f;
-        if (settings.showVisTestPassed) toggleBits += 1.0f;       // bit 0
-        if (settings.showVisInsideBounds) toggleBits += 2.0f;      // bit 1
-        if (settings.showVisInvalidRadius) toggleBits += 4.0f;       // bit 2
-        if (settings.showCulledFrustum) toggleBits += 8.0f;       // bit 3
-        if (settings.showCulledNoEarlyOut) toggleBits += 16.0f;  // bit 4
-        params.overlayColorToggles = DirectX::XMFLOAT4(toggleBits, 0.0f, 0.0f, 0.0f);
+
+        // Only pack overlay settings when debug/overlay is actually enabled
+        // This avoids unnecessary CPU work per dispatch in production
+        if (settings.enableBoundsViewer || settings.debugMode) {
+            params.overlaySettings = DirectX::XMFLOAT4(
+                settings.enableBoundsViewer ? 1.0f : 0.0f,
+                static_cast<float>(settings.boundsMaxObjects),
+                0.0f, 0.0f);
+
+            // Pack color toggles into float4 (7 bits used)
+            float toggleBits = 0.0f;
+            if (settings.showVisTestPassed) toggleBits += 1.0f;       // bit 0
+            if (settings.showVisInsideBounds) toggleBits += 2.0f;      // bit 1
+            if (settings.showVisInvalidRadius) toggleBits += 4.0f;       // bit 2
+            if (settings.showCulledFrustum) toggleBits += 8.0f;       // bit 3
+            if (settings.showCulledNoEarlyOut) toggleBits += 16.0f;  // bit 4
+            params.overlayColorToggles = DirectX::XMFLOAT4(toggleBits, 0.0f, 0.0f, 0.0f);
+        }
 
         D3D11_TEXTURE2D_DESC texDesc{};
         renderer->GetRuntimeData().renderTargets[RE::RENDER_TARGETS::kMAIN].texture->GetDesc(&texDesc);
@@ -1458,7 +1474,16 @@ void HiZOcclusion::DispatchComputeShader()
         if (hiZSampler) {
             context->CSSetSamplers(0, 1, &hiZSampler);
         }
-        context->CSSetShader(hiZTestCS, nullptr, 0);
+
+        // Bind the appropriate shader variant:
+        // - hiZTestCS: production (lightweight, no debug overlay code compiled in)
+        // - hiZTestCSDebug: debug variant with ENABLE_DEBUG_OVERLAY define
+        // Fallback to production shader if debug variant isn't compiled yet
+        ID3D11ComputeShader* activeCS = hiZTestCS;
+        if ((settings.enableBoundsViewer || settings.debugMode) && hiZTestCSDebug) {
+            activeCS = hiZTestCSDebug;
+        }
+        context->CSSetShader(activeCS, nullptr, 0);
 
         // Dispatch for batch processing with GPU timestamp profiling
         {
@@ -1511,8 +1536,8 @@ void HiZOcclusion::DispatchComputeShader()
         // Unbind resources (must pass arrays of nulls)
         ID3D11ShaderResourceView* nullSRVs_tests[2] = { nullptr, nullptr };
         context->CSSetShaderResources(0, 2, nullSRVs_tests);
-        ID3D11UnorderedAccessView* nullUAVs_tests[2] = { nullptr, nullptr };
-        context->CSSetUnorderedAccessViews(0, 2, nullUAVs_tests, nullptr);
+        ID3D11UnorderedAccessView* nullUAVs_tests[3] = { nullptr, nullptr, nullptr };
+        context->CSSetUnorderedAccessViews(0, 3, nullUAVs_tests, nullptr);
         ID3D11SamplerState* nullSamplers_tests[1] = { nullptr };
         context->CSSetSamplers(0, 1, nullSamplers_tests);
         context->CSSetShader(nullptr, nullptr, 0);
