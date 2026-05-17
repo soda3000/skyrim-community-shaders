@@ -241,6 +241,11 @@ void HiZOcclusion::DrawSettings()
 				ImGui::TextColored(ImVec4(0.8f, 0.8f, 0.2f, 1.0f), "Visualization");
 				ImGui::Separator();
 
+                ImGui::Checkbox("Debug mode", &settings.debugMode);
+                if (auto _tt = Util::HoverTooltipWrapper()) {
+                    ImGui::SetTooltip("Enables debug mode.");
+                }
+
 				ImGui::Checkbox("Show Depth Pyramid Viewer", &settings.enableHiZViewer);
 				if (auto _tt = Util::HoverTooltipWrapper()) {
 					ImGui::SetTooltip("Opens a window showing the hierarchical depth buffer.");
@@ -559,7 +564,7 @@ void HiZOcclusion::Reset()
 void HiZOcclusion::EarlyPrepass()
 {
     if (settings.debugMode) {
-        logger::debug("Frame {} EarlyPrepass - {} hidden geometries queued for re-test", 
+        logger::debug("HIZ EarlyPrepass - frame={}, unCullNextFrame={}",
                      globals::state->frameCount, unCullNextFrame.size());
     }
 }
@@ -570,6 +575,12 @@ void HiZOcclusion::Prepass()
     if (!settings.enableHiZCulling) {
         return;
     }
+
+    if (settings.debugMode) {
+        logger::debug("HIZ Prepass - frame={}, pendingGeometry={}",
+                     globals::state->frameCount, pendingGeometry.size());
+    }
+
     // Stats are reset each frame during active culling
     
     // Copy current stats to displayStats for UI before resetting
@@ -1311,7 +1322,7 @@ void HiZOcclusion::ExecuteVisibilityTests()
             return;
         }
         
-        logger::debug("ExecuteVisibilityTests: Processing {} geometry objects from frame {}", numGeometry, globals::state->frameCount - 1);
+        logger::debug("ExecuteVisibilityTests: Frame {} - Processing {} geometry objects", globals::state->frameCount, numGeometry);
 
         // Execute HiZ Tests for this frame
         DispatchComputeShader();

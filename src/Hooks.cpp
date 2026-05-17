@@ -838,6 +838,51 @@ namespace Hooks
 		static inline REL::Relocation<decltype(thunk)> func;
 	};
 
+	// Temporary timing-verification hook for BSFadeNodeCuller::Process2 (vfunc 0x17)
+	struct BSFadeNodeCuller_Process2
+	{
+		static void thunk(RE::BSFadeNodeCuller* culler, const RE::NiCamera* camera, RE::NiAVObject* scene, RE::NiVisibleArray* visibleSet)
+		{
+			if (globals::features::hiZOcclusion.settings.debugMode) {
+				logger::debug("HIZ BSFadeNodeCuller::Process2 - frame={}, visibleSetSize={}",
+					globals::state->frameCount,
+					visibleSet ? visibleSet->currentSize : 0);
+			}
+			func(culler, camera, scene, visibleSet);
+		}
+		static inline REL::Relocation<decltype(thunk)> func;
+	};
+
+	// Temporary timing-verification hook for NiCullingProcess::Process2 (vfunc 0x17)
+	struct NiCullingProcess_Process2
+	{
+		static void thunk(RE::NiCullingProcess* culler, const RE::NiCamera* camera, RE::NiAVObject* scene, RE::NiVisibleArray* visibleSet)
+		{
+			if (globals::features::hiZOcclusion.settings.debugMode) {
+				logger::debug("HIZ NiCullingProcess::Process2 - frame={}, visibleSetSize={}",
+					globals::state->frameCount,
+					visibleSet ? visibleSet->currentSize : 0);
+			}
+			func(culler, camera, scene, visibleSet);
+		}
+		static inline REL::Relocation<decltype(thunk)> func;
+	};
+
+	// Temporary timing-verification hook for BSCullingProcess::Process2 (vfunc 0x17)
+	struct BSCullingProcess_Process2
+	{
+		static void thunk(RE::BSCullingProcess* culler, const RE::NiCamera* camera, RE::NiAVObject* scene, RE::NiVisibleArray* visibleSet)
+		{
+			if (globals::features::hiZOcclusion.settings.debugMode) {
+				logger::debug("HIZ BSCullingProcess::Process2 - frame={}, visibleSetSize={}",
+					globals::state->frameCount,
+					visibleSet ? visibleSet->currentSize : 0);
+			}
+			func(culler, camera, scene, visibleSet);
+		}
+		static inline REL::Relocation<decltype(thunk)> func;
+	};
+
 	// Hook NiCullingProcess::AppendVirtual - base class fallback for any other culling paths
 	struct NiCullingProcess_AppendVirtual
 	{
@@ -1138,6 +1183,15 @@ namespace Hooks
 		stl::write_vfunc<0x18, BSCullingProcess_AppendVirtual>(RE::VTABLE_BSCullingProcess[0]);
 		stl::write_vfunc<0x18, BSFadeNodeCuller_AppendVirtual>(RE::VTABLE_BSFadeNodeCuller[0]);
 		stl::write_vfunc<0x18, NiCullingProcess_AppendVirtual>(RE::VTABLE_NiCullingProcess[0]);
+
+		logger::info("Hooking BSFadeNodeCuller::Process2 for Hi-Z timing verification");
+		stl::write_vfunc<0x17, BSFadeNodeCuller_Process2>(RE::VTABLE_BSFadeNodeCuller[0]);
+
+		logger::info("Hooking NiCullingProcess::Process2 for Hi-Z timing verification");
+		stl::write_vfunc<0x17, NiCullingProcess_Process2>(RE::VTABLE_NiCullingProcess[0]);
+
+		logger::info("Hooking BSCullingProcess::Process2 for Hi-Z timing verification");
+		stl::write_vfunc<0x17, BSCullingProcess_Process2>(RE::VTABLE_BSCullingProcess[0]);
 		
 		// Hook depth prepass rendering to set state flag (AE only - address not available for SE)
 		if (REL::Module::IsAE()) {
