@@ -9,6 +9,7 @@
 #include "ShaderCache.h"
 #include "State.h"
 #include "Util.h"
+#include "TruePBR.h"
 
 #include "Features/HDRDisplay.h"
 #include "Features/InteriorSun.h"
@@ -16,6 +17,7 @@
 #include "Features/Upscaling.h"
 #include "Features/VR.h"
 #include "Features/VolumetricLighting.h"
+#include "Features/TerrainHelper.h"
 
 #include <RE/B/BSGeometry.h>
 #include <RE/N/NiAVObject.h>
@@ -776,8 +778,8 @@ namespace Hooks
 			bool vanillaResult = func(land);
 
 			// setup material for PBR
-			auto TruePBRSingleton = globals::truePBR;
-			if (TruePBRSingleton->TESObjectLAND_SetupMaterial(land)) {
+			auto& TruePBRSingleton = globals::features::truePBR;
+			if (TruePBRSingleton.TESObjectLAND_SetupMaterial(land)) {
 				// if PBR, we are done
 				return true;
 			}
@@ -798,8 +800,8 @@ namespace Hooks
 		static void thunk(RE::BSLightingShader* shader, RE::BSLightingShaderMaterialBase const* material)
 		{
 			// setup material for PBR
-			auto TruePBRSingleton = globals::truePBR;
-			if (TruePBRSingleton->BSLightingShader_SetupMaterial(shader, material)) {
+			auto& TruePBRSingleton = globals::features::truePBR;
+			if (TruePBRSingleton.BSLightingShader_SetupMaterial(shader, material)) {
 				// if PBR, we are done
 				return;
 			}
@@ -816,142 +818,67 @@ namespace Hooks
 		static inline REL::Relocation<decltype(thunk)> func;
 	};
 
-	// Hook BSCullingProcess::AppendVirtual to cull geometry EARLY during scene traversal
-	// This prevents all downstream CPU work (batching, shader setup, state changes)
-	struct BSCullingProcess_AppendVirtual
+	struct BSAccumProcess_RegisterObject
 	{
-		static void thunk(RE::BSCullingProcess* cullingProcess, RE::BSGeometry& geometry, uint32_t a_arg2)
+		static uint64_t thunk(void* accum, RE::NiAVObject* object, uint64_t flags)
 		{
-			func(cullingProcess, geometry, a_arg2);
-		}
-		static inline REL::Relocation<decltype(thunk)> func;
-	};
+			auto& hiz = globals::features::hiZOcclusion;
+			if (hiz.loaded && hiz.settings.enableHiZCulling) {
 
-	// Hook BSFadeNodeCuller::AppendVirtual - this is the MAIN culling path for most world geometry
-	// BSFadeNodeCuller inherits from NiCullingProcess (not BSCullingProcess) so needs separate hook
-	struct BSFadeNodeCuller_AppendVirtual
-	{
-		static void thunk(RE::BSFadeNodeCuller* culler, RE::BSGeometry& geometry, uint32_t a_arg2)
-		{
-			func(culler, geometry, a_arg2);
-		}
-		static inline REL::Relocation<decltype(thunk)> func;
-	};
+				auto* geo = netimmerse_cast<RE::BSGeometry*>(object);
+						
+				if (!geo || geo->worldBound.radius <= 0.0f) {
+					return func(accum, object, flags);
+				}
 
-	// Temporary timing-verification hook for BSFadeNodeCuller::Process2 (vfunc 0x17)
-	struct BSFadeNodeCuller_Process2
-	{
-		static void thunk(RE::BSFadeNodeCuller* culler, const RE::NiCamera* camera, RE::NiAVObject* scene, RE::NiVisibleArray* visibleSet)
-		{
-			if (globals::features::hiZOcclusion.settings.debugMode) {
-				logger::debug("HIZ BSFadeNodeCuller::Process2 - frame={}, visibleSetSize={}",
-					globals::state->frameCount,
-					visibleSet ? visibleSet->currentSize : 0);
-			}
-			func(culler, camera, scene, visibleSet);
-		}
-		static inline REL::Relocation<decltype(thunk)> func;
-	};
+				auto* refr = object->GetUserData();
+				if (!refr) {
+					return func(accum, object, flags);
+				}
 
-	// Temporary timing-verification hook for NiCullingProcess::Process2 (vfunc 0x17)
-	struct NiCullingProcess_Process2
-	{
-		static void thunk(RE::NiCullingProcess* culler, const RE::NiCamera* camera, RE::NiAVObject* scene, RE::NiVisibleArray* visibleSet)
-		{
-			if (globals::features::hiZOcclusion.settings.debugMode) {
-				logger::debug("HIZ NiCullingProcess::Process2 - frame={}, visibleSetSize={}",
-					globals::state->frameCount,
-					visibleSet ? visibleSet->currentSize : 0);
-			}
-			func(culler, camera, scene, visibleSet);
-		}
-		static inline REL::Relocation<decltype(thunk)> func;
-	};
+				hiz.stats.accumRegisterCalls++;
 
-	// Temporary timing-verification hook for BSCullingProcess::Process2 (vfunc 0x17)
-	struct BSCullingProcess_Process2
-	{
-		static void thunk(RE::BSCullingProcess* culler, const RE::NiCamera* camera, RE::NiAVObject* scene, RE::NiVisibleArray* visibleSet)
-		{
-			if (globals::features::hiZOcclusion.settings.debugMode) {
-				logger::debug("HIZ BSCullingProcess::Process2 - frame={}, visibleSetSize={}",
-					globals::state->frameCount,
-					visibleSet ? visibleSet->currentSize : 0);
-			}
-			func(culler, camera, scene, visibleSet);
-		}
-		static inline REL::Relocation<decltype(thunk)> func;
-	};
+				// RenderModes from:
+				// https://github.com/Nukem9/skyrimse-test/blob/master/skyrim64_test/src/patches/TES/BSShader/BSShaderAccumulator.cpp
+				uint32_t renderMode = *reinterpret_cast<uint32_t*>(reinterpret_cast<uintptr_t>(accum) + 0x150);
 
-	// Hook NiCullingProcess::AppendVirtual - base class fallback for any other culling paths
-	struct NiCullingProcess_AppendVirtual
-	{
-		static void thunk(RE::NiCullingProcess* cullingProcess, RE::BSGeometry& geometry, uint32_t a_arg2)
-		{
-			func(cullingProcess, geometry, a_arg2);
-		}
-		static inline REL::Relocation<decltype(thunk)> func;
-	};
+				/*
+				// Do not cull LOD objects
+				if (renderMode == 25 || renderMode == 26) {
+					return func(accum, object, flags);
+				}
+				*/
 
-	struct BSBatchRenderer_RenderPassImmediately
-	{
-		static void thunk(RE::BSRenderPass* pass, uint32_t technique, bool alphaTest, uint32_t renderFlags)
-		{
-			// Collect geometry for HIZ
-			if (pass->geometry && globals::features::hiZOcclusion.settings.enableHiZCulling
-				&& (globals::features::hiZOcclusion.settings.cullLODObjects || !globals::features::hiZOcclusion.IsLODGeometry(pass->geometry))) 
-			{
-				if (!globals::state->renderingDepthPrepass &&
-					!globals::state->activeReflections &&
-					pass->shader &&
-					pass->shader->shaderType.get() != RE::BSShader::Type::Grass &&
-					pass->shader->shaderType.get() != RE::BSShader::Type::Sky &&
-					pass->shader->shaderType.get() != RE::BSShader::Type::Water &&
-					pass->shader->shaderType.get() != RE::BSShader::Type::DistantTree &&
-					pass->geometry && 
-					pass->geometry->worldBound.radius > 0.0f) {
-					std::lock_guard<std::mutex> lock(globals::features::hiZOcclusion.pendingGeometryMutex);
-					// Fast O(1) check
-					if (globals::features::hiZOcclusion.pendingGeometrySet.insert(pass->geometry).second) {
-						if (!HiZOcclusion::IsPlayerCharacterGeometry(pass->geometry)) {
-							auto* rawGeometry = pass->geometry;
-							globals::features::hiZOcclusion.pendingGeometry.emplace_back(rawGeometry);
-						}
-						// Player geometry: stays in set to skip future passes, but not added to vector
+				// Check if we allow culling for this render mode
+				
+				if (renderMode < 0 || renderMode >= 30) {
+					return func(accum, object, flags);
+				}
+
+				// 0 is most regular geometry, including LOD
+				// 12 culls most shadows and flickers first-person geometry
+				// 14 is more shadows - possibly just sun
+				// 15 is more shadows
+				// 22 culls first-person geometry in view.
+				hiz.stats.renderModeCalls[renderMode]++;
+
+				bool allowCulling = hiz.settings.cullRenderMode[renderMode];
+				
+				if (allowCulling) {
+					// Collect geometry for testing
+					//std::lock_guard<std::mutex> lock(hiz.pendingGeometryMutex);
+					if (hiz.pendingGeometrySet.insert(geo).second) {
+						hiz.pendingGeometry.emplace_back(geo);
+					}
+
+					if (hiz.IsGeometryOccluded(geo)) {
+						hiz.stats.earlyCulledCount++;
+						return 0;
 					}
 				}
 			}
 			
-			// Always allow shadow map rendering to proceed
-			if (globals::state->renderingShadowmaps) {
-				func(pass, technique, alphaTest, renderFlags);
-				return;
-			}
-
-			// Check if this geometry is in the occluded set
-			if (pass->geometry && globals::features::hiZOcclusion.settings.enableHiZCulling
-				&& pass->shader->shaderType.get() != RE::BSShader::Type::DistantTree
-				&& (globals::features::hiZOcclusion.settings.cullLODObjects || !globals::features::hiZOcclusion.IsLODGeometry(pass->geometry))
-				&& globals::features::hiZOcclusion.IsGeometryOccluded(pass->geometry)) {
-				
-				// Skip rendering - increment stats but don't call original function
-				globals::features::hiZOcclusion.stats.otherCallsCulled++;
-				return;
-			}
-
-			func(pass, technique, alphaTest, renderFlags);
-		}
-		static inline REL::Relocation<decltype(thunk)> func;
-	};
-
-	// Hook for depth prepass rendering phase (AE only)
-	struct RenderWorldDepthPrepass
-	{
-		static void thunk(char a1, bool a2)
-		{
-			globals::state->renderingDepthPrepass = true;
-			func(a1, a2);
-			globals::state->renderingDepthPrepass = false;
+			return func(accum, object, flags);
 		}
 		static inline REL::Relocation<decltype(thunk)> func;
 	};
@@ -1173,30 +1100,10 @@ namespace Hooks
 				REL::safe_write(setupGeometryUpdateRenderSpace + 0x378, patch3, sizeof(patch3));
 			}
 		}
-
-		logger::info("Hooking BSBatchRenderer::RenderPassImmediately for Hi-Z culling");
-		stl::write_thunk_call<BSBatchRenderer_RenderPassImmediately>(REL::RelocationID(100852, 107642).address() + REL::Relocate(0x29E, 0x28F));
 		
-		// Hook multiple culling process AppendVirtual functions (vfunc 0x18) for early geometry culling
-		// This prevents ALL downstream CPU work by culling during scene traversal
-		logger::info("Hooking culling processes for early Hi-Z culling (BSCullingProcess, BSFadeNodeCuller, NiCullingProcess)");
-		stl::write_vfunc<0x18, BSCullingProcess_AppendVirtual>(RE::VTABLE_BSCullingProcess[0]);
-		stl::write_vfunc<0x18, BSFadeNodeCuller_AppendVirtual>(RE::VTABLE_BSFadeNodeCuller[0]);
-		stl::write_vfunc<0x18, NiCullingProcess_AppendVirtual>(RE::VTABLE_NiCullingProcess[0]);
-
-		logger::info("Hooking BSFadeNodeCuller::Process2 for Hi-Z timing verification");
-		stl::write_vfunc<0x17, BSFadeNodeCuller_Process2>(RE::VTABLE_BSFadeNodeCuller[0]);
-
-		logger::info("Hooking NiCullingProcess::Process2 for Hi-Z timing verification");
-		stl::write_vfunc<0x17, NiCullingProcess_Process2>(RE::VTABLE_NiCullingProcess[0]);
-
-		logger::info("Hooking BSCullingProcess::Process2 for Hi-Z timing verification");
-		stl::write_vfunc<0x17, BSCullingProcess_Process2>(RE::VTABLE_BSCullingProcess[0]);
-		
-		// Hook depth prepass rendering to set state flag (AE only - address not available for SE)
+		// Hook engine primary object registration for HIZ Occlusion
 		if (REL::Module::IsAE()) {
-			logger::info("Hooking RenderWorldDepthPrepass for Hi-Z culling state tracking");
-			stl::write_thunk_call<RenderWorldDepthPrepass>(REL::RelocationID(0, 36559).address() + 0x395);
+			stl::write_thunk_call<BSAccumProcess_RegisterObject>(REL::RelocationID(0, 76558).address() + 0xD3);
 		}
 		
 		stl::write_thunk_call<BSLightingShader_SetupGeometry_GeometrySetupConstantPointLights>(REL::RelocationID(100565, 107300).address() + REL::Relocate(0x523, 0xB0E, 0x5FE));

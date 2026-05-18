@@ -111,6 +111,7 @@ static const float NDC_TO_PIXEL_SCALE = 0.5;
 // Mip level bias: subtract from log2(screenSize) to use finer depth resolution.
 // Using a lower mip level (finer resolution) reduces false occlusion but costs more samples.
 // A value of 1.5 means we use approximately 2-3x finer resolution than the object's screen coverage.
+//static const float MIP_LEVEL_BIAS = 1.5;
 static const float MIP_LEVEL_BIAS = 1.5;
 
 // =============================================================================
@@ -490,6 +491,13 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
             float2 nearestUV = clamp(ViewToHiZUV(nearestSpherePoint), float2(0.0, 0.0), float2(1.0, 1.0));
             float4 nearestClip = mul(FrameBuffer::CameraProj[0], float4(nearestSpherePoint, 1));
             float nearestDepth = nearestClip.z / nearestClip.w;
+
+            // NEW: Entire sphere beyond far plane — don't occlusion-cull
+            if (nearestDepth > 1.0) {
+                VisibilityResults[geometryIndex] = -3;
+                ReportVisibleGeometry(geometryIndex, centerVS, radius);
+                return;
+            }
             
             hiZDepth = HiZBuffer.SampleLevel(HiZSampler, nearestUV, mipLevel).r;
             if (nearestDepth <= hiZDepth + conservativeBias) {
@@ -546,7 +554,7 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
     // completely outside the view frustum and can be culled.
     // If any point was in front of camera, and at least on point was behind camera,
     // the object should not be culled.
-    if (!anyPointOnScreen) {
+    if (!anyPointOnScreen && !anyPointBehindCamera) {
         VisibilityResults[geometryIndex] = 1;  // Culled: frustum (behind camera)
 #ifdef ENABLE_DEBUG_OVERLAY
         if (overlaySettings.x != 0 && geometryIndex < (uint)overlaySettings.y) {

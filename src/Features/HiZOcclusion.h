@@ -112,7 +112,6 @@ struct HiZOcclusion : OverlayFeature
         // Hi-Z culling settings
         bool enableHiZCulling = true;     // enable Hi-Z occlusion culling
         float conservativeBias = 0.001f;   // depth bias for conservative testing (0.01 = 1% bias)
-        bool cullLODObjects = false;      // enable culling for LOD objects (may cause flickering at low bias)
         bool showCullingStats = false;    // show Hi-Z culling statistics in UI
 
         // Bounds overlay viewer (draw tested bounds and closest point)
@@ -126,7 +125,14 @@ struct HiZOcclusion : OverlayFeature
         bool showCulledFrustum = true;
         bool showCulledNoEarlyOut = true;
 
-        uint32_t consecutiveOccludedThreshold = 5; // 1-100, cull after N consecutive occluded tests
+        // Per-result-type culling toggles (disable to diagnose false positives)
+        bool cullFrustum = true;         // cull frustum-failed objects (magenta)
+        bool cullNoEarlyOut = true;      // cull depth-test-failed objects (red)
+
+        uint32_t consecutiveOccludedThreshold = 1; // 1-100, cull after N consecutive occluded tests
+
+        //bool allowShadowCulling; // Whether shadow passes should be culled in hooks
+        std::array<bool, 30> cullRenderMode; // Whether each culling type should be allowed
     };
 
     Settings settings;
@@ -193,16 +199,7 @@ struct HiZOcclusion : OverlayFeature
     
     // Get current camera for culling tests
     RE::NiCamera* GetCurrentCamera();
-    
-    // Integration with rendering pipeline (no hooks needed)
-    void IntegrateWithRenderPipeline();
-    
-    // Check if geometry has LOD flags (LODObjects, HDLODObjects, LODLandscape)
-    static bool IsLODGeometry(RE::BSGeometry* geometry);
 
-    // Check for first-person geometry
-    static bool IsPlayerCharacterGeometry(RE::BSGeometry* geometry);
-    
     // Accessors for culling step
     inline ID3D11ShaderResourceView* GetHiZSRV() const { return hiZSRV; }
     inline uint32_t GetHiZMipCount() const { return hiZMipCount; }
@@ -247,19 +244,6 @@ struct HiZOcclusion : OverlayFeature
         
         // Early culling at scene traversal (prevents all downstream CPU work)
         uint32_t earlyCulledCount = 0;       // geometry culled at AppendVirtual before batching
-        uint32_t lodSkippedCount = 0;        // LOD geometry skipped due to cullLODObjects=false
-        
-        // Shadow/Utility shader culling stats
-        uint32_t utilityCallsTotal = 0;      // total utility shader calls this frame
-        uint32_t utilityCallsCulled = 0;     // utility calls culled
-        
-        // Particle/Effect shader culling stats
-        uint32_t particleCallsTotal = 0;     // total particle/effect shader calls this frame
-        uint32_t particleCallsCulled = 0;    // particle/effect calls culled
-        
-        // Lighting/DistantTree/BloodSplatter shader culling stats (Sky, Water, Grass excluded)
-        uint32_t otherCallsTotal = 0;        // total other shader calls checked this frame
-        uint32_t otherCallsCulled = 0;       // other shader calls culled
         
         // Async readback tracking
         uint32_t lastResultFrame = 0;          // frame when results were last updated
@@ -275,23 +259,9 @@ struct HiZOcclusion : OverlayFeature
         float mapTimeMs = 0.0f;
         float unmapTimeMs = 0.0f;
         float copyDataTimeMs = 0.0f;
-        
-        // Performance metrics
-        float cullingEfficiency = 0.0f;        // percentage of geometry culled
-        float cullingOverheadMs = 0.0f;        // total overhead per frame
-        float avgGeometryPerMs = 0.0f;         // geometry processed per millisecond
-        uint32_t pointsTestedPerObject = 17;   // 8 corners + 8 extended + 1 nearest sphere point
-        
-        // Running averages (over last 60 frames)
-        float avgCullingEfficiency = 0.0f;
-        float avgOverheadMs = 0.0f;
-        float avgGeometryCount = 0.0f;
-        
-        // Frame timing for averaging
-        std::vector<float> recentEfficiency;
-        std::vector<float> recentOverhead;
-        std::vector<uint32_t> recentGeometryCount;
-        uint32_t maxHistoryFrames = 60;
+
+        uint32_t accumRegisterCalls = 0;        // per-object accumulator registrations (main pass)
+        std::array<uint32_t, 30> renderModeCalls = {};  // per-render-mode calls (main pass)
     };
     CullingStats stats;
     CullingStats displayStats;  // Copy of stats from previous frame for UI display
@@ -324,9 +294,9 @@ struct HiZOcclusion : OverlayFeature
     std::vector<RE::NiPointer<RE::BSGeometry>> unCullNextFrame;
     std::vector<DirectX::XMFLOAT4> geometryBounds;  // xyz=center, w=radius
     
-    // Occlusion flag bit - uses unused bit 20 in NiAVObject::flags for O(1) lookup
+    // Occlusion flag bit - uses unused bit 30 in NiAVObject::flags for O(1) lookup
     // This avoids hash set lookups in hot paths (early culling hooks)
-    static constexpr uint32_t kOccludedFlag = 1u << 20;
+    static constexpr uint32_t kOccludedFlag = 1u << 30;
     
     // Set for iterating occluded geometry (needed for ClearOcclusionState and unCullNextFrame)
     std::unordered_set<RE::BSGeometry*> occludedGeometry;

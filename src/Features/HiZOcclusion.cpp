@@ -19,7 +19,6 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
     hizViewerScale,
     enableHiZCulling,
     conservativeBias,
-    cullLODObjects,
     showCullingStats,
     debugMode,
     enableBoundsViewer,
@@ -29,7 +28,11 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
     showVisInvalidRadius,
     showCulledFrustum,
     showCulledNoEarlyOut,
-    consecutiveOccludedThreshold
+    cullFrustum,
+    cullNoEarlyOut,
+    consecutiveOccludedThreshold,
+    //allowShadowCulling,
+    cullRenderMode
 )
 
 HiZOcclusion::~HiZOcclusion()
@@ -160,23 +163,34 @@ void HiZOcclusion::DrawSettings()
 				ImGui::TextColored(ImVec4(0.8f, 0.8f, 0.2f, 1.0f), "Culling Options");
 				ImGui::Separator();
 
-				ImGui::SliderFloat("Conservative Bias", &settings.conservativeBias, 0.0f, 1.0f, "%.3f");
+				ImGui::SliderFloat("Conservative Bias", &settings.conservativeBias, 0.000f, 0.005f, "%.3f");
 				if (auto _tt = Util::HoverTooltipWrapper()) {
 					Util::DrawMultiLineTooltip({
 						"How aggressively objects are culled.",
 						"Lower = more culling, better performance, but may cause pop-in.",
-						"Higher = safer, fewer artifacts, but less performance gain.",
-						"Default: 0.02 is a good balance."
+						"Higher = safer, fewer artifacts, but less performance gain."
 					});
 				}
 
-				ImGui::Checkbox("Cull Distant LOD Objects", &settings.cullLODObjects);
+                /*
+				ImGui::Checkbox("Allow shadow culling", &settings.allowShadowCulling);
 				if (auto _tt = Util::HoverTooltipWrapper()) {
 					Util::DrawMultiLineTooltip({
-						"Apply culling to terrain and object LODs.",
-						"Disable if you see flickering on distant mountains or trees."
+                        "Culled geometry won't cast shadows. Reduces Utility draw calls, "
+                        "but shadows may pop in/out of view during gameplay."
 					});
 				}
+                */
+                
+                // Render mode culling toggles
+                ImGui::Text("Render Mode Culling:");
+                for (int i = 0; i < 30; i++) {
+                    std::string label = "Render Mode " + std::to_string(i);
+                    ImGui::Checkbox(label.c_str(), &settings.cullRenderMode[i]);
+                    // Number of calls for this render mode
+                    ImGui::SameLine();
+                    ImGui::Text("%u", stats.renderModeCalls[i]);
+                }
 
                 int threshold = static_cast<int>(settings.consecutiveOccludedThreshold);
                 if (ImGui::SliderInt("Consecutive Occluded Threshold", &threshold, 1, 100)) {
@@ -206,29 +220,17 @@ void HiZOcclusion::DrawSettings()
 					}
 				}
 
-				// Late-stage draw call culling
-				uint32_t totalLateCulled = displayStats.utilityCallsCulled + displayStats.particleCallsCulled + displayStats.otherCallsCulled;
-				uint32_t totalLateCalls = displayStats.utilityCallsTotal + displayStats.particleCallsTotal + displayStats.otherCallsTotal;
-				if (totalLateCalls > 0) {
-					ImGui::Text("Draw calls culled: %u / %u", totalLateCulled, totalLateCalls);
-					if (auto _tt = Util::HoverTooltipWrapper()) {
-						ImGui::SetTooltip("Additional draw calls skipped at render time.");
-					}
-				}
-
-				if (displayStats.lodSkippedCount > 0) {
-					ImGui::TextColored(ImVec4(0.5f, 0.5f, 1.0f, 1.0f), "LOD objects skipped: %u", displayStats.lodSkippedCount);
-					if (auto _tt = Util::HoverTooltipWrapper()) {
-						ImGui::SetTooltip("LOD geometry not culled because 'Cull Distant LOD Objects' is disabled.");
-					}
-				}
-
 				// Status
 				ImGui::Spacing();
 				ImGui::Text("Status: %s", HiZStatusToString(status));
 				if (!statusMessage.empty()) {
 					ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.0f, 1.0f), "  %s", statusMessage.c_str());
 				}
+
+                ImGui::Text("Accumulator registrations:");
+                ImGui::Indent();
+                ImGui::Text("Main pass:   %u", displayStats.accumRegisterCalls);
+                ImGui::Unindent();
 			}
 			ImGui::EndChild();
 			ImGui::EndTabItem();
@@ -284,14 +286,14 @@ void HiZOcclusion::DrawSettings()
 					ImGui::SameLine();
 					ImGui::Text(": %u", stats.visInvalidRadius);
 
-					ImGui::Checkbox("Frustum culled (magenta)", &settings.showCulledFrustum);
-					ImGui::SameLine();
-					ImGui::Text(": %u", stats.culledFrustum);
-
-					ImGui::Checkbox("Occluded (red)", &settings.showCulledNoEarlyOut);
-					ImGui::SameLine();
-					ImGui::Text(": %u", stats.culledNoEarlyOut);
-					ImGui::Unindent();
+                    ImGui::Spacing();
+                    ImGui::Text("Cull:");
+                    ImGui::Checkbox("Frustum (magenta)", &settings.cullFrustum);
+                    ImGui::SameLine();
+                    ImGui::Text(": %u", stats.culledFrustum);
+                    ImGui::Checkbox("Occluded (red)", &settings.cullNoEarlyOut);
+                    ImGui::SameLine();
+                    ImGui::Text(": %u", stats.culledNoEarlyOut);
 				}
 
 				// Detailed Statistics
@@ -310,13 +312,6 @@ void HiZOcclusion::DrawSettings()
 				} else {
 					ImGui::Text("Results: Fresh");
 				}
-
-				// Detailed draw call breakdown
-				ImGui::Spacing();
-				ImGui::Text("Culled Draw Call Breakdown:");
-				ImGui::Text("  Shadow/Depth: %u culled", displayStats.utilityCallsCulled);
-				ImGui::Text("  Particles/FX: %u culled", displayStats.particleCallsCulled);
-				ImGui::Text("  Other: %u culled", displayStats.otherCallsCulled);
 
 				// Timing
 				ImGui::Spacing();
@@ -358,6 +353,8 @@ void HiZOcclusion::DrawSettings()
 		}
 		ImGui::End();
 	}
+
+    stats.renderModeCalls = {};
 }
 
 void HiZOcclusion::DrawOverlay()
@@ -522,16 +519,7 @@ void HiZOcclusion::Reset()
         if (wasEnabled) {
             // Restore all app-culled geometry and clear occlusion tracking
             ClearOcclusionState();
-            /*
-            if (!unCullNextFrame.empty()) {
-                for (auto& geometry : unCullNextFrame) {
-                    if (geometry) {
-                        geometry->GetFlags().reset(RE::NiAVObject::Flag::kHidden);
-                    }
-                }
-                unCullNextFrame.clear();
-            }
-            */
+
             // Release and clear all resources
             ReleaseBoundsOverlayResources();
             ReleaseDebugBuffer();
@@ -546,10 +534,6 @@ void HiZOcclusion::Reset()
             stats.defaultValue = 0;
             stats.culledFrustum = 0;
             stats.culledNoEarlyOut = 0;
-            stats.utilityCallsTotal = 0;
-            stats.utilityCallsCulled = 0;
-            stats.particleCallsTotal = 0;
-            stats.particleCallsCulled = 0;
             stats.resourceSetupDurationMS = 0.0f;
             stats.recreateDurationMS = 0.0f;
             wasEnabled = false;
@@ -598,13 +582,7 @@ void HiZOcclusion::Prepass()
     stats.culledFrustum = 0;
     stats.culledNoEarlyOut = 0;
     stats.earlyCulledCount = 0;
-    stats.lodSkippedCount = 0;
-    stats.utilityCallsTotal = 0;
-    stats.utilityCallsCulled = 0;
-    stats.particleCallsTotal = 0;
-    stats.particleCallsCulled = 0;
-    stats.otherCallsTotal = 0;
-    stats.otherCallsCulled = 0;
+    stats.accumRegisterCalls = 0;
 
     if (settings.enableBoundsViewer && boundsOverlayUAV) {
         overlayUpdatedThisFrame = false;
@@ -655,9 +633,7 @@ void HiZOcclusion::Prepass()
         for (auto& geo : unCullNextFrame) {
             auto* rawGeo = geo.get();
             if (rawGeo && !pendingGeometrySet.contains(rawGeo)) {
-                //geo->GetFlags().reset(RE::NiAVObject::Flag::kHidden);
-                pendingGeometry.push_back(geo);
-                pendingGeometrySet.insert(rawGeo);
+                MarkGeometryVisible(rawGeo);
             }
         }
     }
@@ -1456,6 +1432,21 @@ void HiZOcclusion::DispatchComputeShader()
             logger::warn("ExecuteVisibilityTests: failed to map hiZTestParamsBuffer");
             return;
         }
+
+        if (settings.debugMode) {
+            logger::debug("HiZ Dispatch params: mipCount={}, bias={:.4f}, geomCount={}, "
+                        "camPos=({:.1f},{:.1f},{:.1f}), bufDim=({:.0f},{:.0f})",
+                        hiZMipCount, settings.conservativeBias, numGeometry,
+                        params.cameraWorldPos.x, params.cameraWorldPos.y, params.cameraWorldPos.z,
+                        params.bufferDim.x, params.bufferDim.y);
+
+            // Log first 3 geometry bounds to verify world-space coords
+            for (uint32_t i = 0; i < std::min<uint32_t>(3, numGeometry); ++i) {
+                auto& b = geometryBounds[i];
+                logger::debug("  bounds[{}]: center=({:.1f},{:.1f},{:.1f}) radius={:.1f}",
+                            i, b.x, b.y, b.z, b.w);
+            }
+        }
     }
     
     // Bind resources and dispatch Hi-Z test compute shader for batch processing
@@ -1599,14 +1590,22 @@ void HiZOcclusion::ProcessVisibilityResults(uint32_t bufferIndex) {
             }
             case 1u: { // Culled: Frustum
                 stats.culledFrustum++;
-                MarkGeometryOccluded(geo.get());
-                unCullNextFrame.push_back(geo);
+                if (settings.cullFrustum) {
+                    MarkGeometryOccluded(geo.get());
+                    unCullNextFrame.push_back(geo);
+                } else {
+                    MarkGeometryVisible(geo.get());
+                }
                 break;
             }
             case 2u: { // Culled: No early out
                 stats.culledNoEarlyOut++;
-                MarkGeometryOccluded(geo.get());
-                unCullNextFrame.push_back(geo);
+                if (settings.cullNoEarlyOut) {
+                    MarkGeometryOccluded(geo.get());
+                    unCullNextFrame.push_back(geo);
+                } else {
+                    MarkGeometryVisible(geo.get());
+                }
                 break;
             }
             default: {
@@ -1614,38 +1613,13 @@ void HiZOcclusion::ProcessVisibilityResults(uint32_t bufferIndex) {
             }
         }
     }
-}
 
-bool HiZOcclusion::IsLODGeometry(RE::BSGeometry* geometry)
-{
-    if (!geometry) {
-        return false;
+    if (settings.debugMode) {
+        logger::debug("Visibility results: passed={}, inside={}, invalid={}, "
+                    "frustum={}, occluded={}, default={}",
+                    stats.visTestPassed, stats.visInsideBounds, stats.visInvalidRadius,
+                    stats.culledFrustum, stats.culledNoEarlyOut, stats.defaultValue);
     }
-    
-    auto shaderProperty = static_cast<RE::BSShaderProperty*>(geometry->GetGeometryRuntimeData().shaderProperty.get());
-    if (!shaderProperty) {
-        return false;
-    }
-    
-    using Flag = RE::BSShaderProperty::EShaderPropertyFlag;
-    return shaderProperty->flags.any(Flag::kLODObjects, Flag::kHDLODObjects, Flag::kLODLandscape);
-}
-
-bool HiZOcclusion::IsPlayerCharacterGeometry(RE::BSGeometry* geometry)
-{
-    if (!geometry) return false;
-    auto* player = RE::PlayerCharacter::GetSingleton();
-    if (!player) return false;
-    auto* root1st = player->Get3D(true);
-    auto* root3rd = player->Get3D(false);
-    if (!root1st && !root3rd) return false;
-    RE::NiNode* parent = geometry->parent;
-    while (parent) {
-        if ((root1st && parent == root1st) || (root3rd && parent == root3rd))
-            return true;
-        parent = parent->parent;
-    }
-    return false;
 }
 
 void HiZOcclusion::MarkGeometryOccluded(RE::BSGeometry* geometry)
