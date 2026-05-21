@@ -836,20 +836,11 @@ namespace Hooks
 					return func(accum, object, flags);
 				}
 
-				hiz.stats.accumRegisterCalls++;
+				hiz.stats.accumRegisterCalls.fetch_add(1, std::memory_order_relaxed);
 
 				// RenderModes from:
 				// https://github.com/Nukem9/skyrimse-test/blob/master/skyrim64_test/src/patches/TES/BSShader/BSShaderAccumulator.cpp
 				uint32_t renderMode = *reinterpret_cast<uint32_t*>(reinterpret_cast<uintptr_t>(accum) + 0x150);
-
-				/*
-				// Do not cull LOD objects
-				if (renderMode == 25 || renderMode == 26) {
-					return func(accum, object, flags);
-				}
-				*/
-
-				// Check if we allow culling for this render mode
 				
 				if (renderMode < 0 || renderMode >= 30) {
 					return func(accum, object, flags);
@@ -860,19 +851,23 @@ namespace Hooks
 				// 14 is more shadows - possibly just sun
 				// 15 is more shadows
 				// 22 culls first-person geometry in view.
-				hiz.stats.renderModeCalls[renderMode]++;
+				hiz.stats.renderModeCalls[renderMode].fetch_add(1, std::memory_order_relaxed);
 
 				bool allowCulling = hiz.settings.cullRenderMode[renderMode];
 				
 				if (allowCulling) {
-					// Collect geometry for testing
-					//std::lock_guard<std::mutex> lock(hiz.pendingGeometryMutex);
-					if (hiz.pendingGeometrySet.insert(geo).second) {
-						hiz.pendingGeometry.emplace_back(geo);
-					}
-
+					// Initialize the thread-local registration if this thread is calling the hook for the first time
+					static thread_local bool threadRegistered = [&hiz]() {
+						std::lock_guard<std::mutex> lock(hiz.threadVectorsMutex);
+						hiz.allThreadVectors.push_back(&HiZOcclusion::localPendingGeometry);
+						return true;
+					}();
+					
+					// Append to local list with zero thread synchronization
+					HiZOcclusion::localPendingGeometry.push_back(geo);
+	
 					if (hiz.IsGeometryOccluded(geo)) {
-						hiz.stats.earlyCulledCount++;
+						hiz.stats.earlyCulledCount.fetch_add(1, std::memory_order_relaxed);
 						return 0;
 					}
 				}

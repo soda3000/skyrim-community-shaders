@@ -189,7 +189,7 @@ void HiZOcclusion::DrawSettings()
                     ImGui::Checkbox(label.c_str(), &settings.cullRenderMode[i]);
                     // Number of calls for this render mode
                     ImGui::SameLine();
-                    ImGui::Text("%u", stats.renderModeCalls[i]);
+                    ImGui::Text("%u", stats.renderModeCalls[i].load());
                 }
 
                 int threshold = static_cast<int>(settings.consecutiveOccludedThreshold);
@@ -214,7 +214,7 @@ void HiZOcclusion::DrawSettings()
 
 				// Early culling (best savings - prevents all CPU work)
 				if (displayStats.earlyCulledCount > 0) {
-					ImGui::TextColored(ImVec4(0.2f, 1.0f, 0.4f, 1.0f), "Objects culled early: %u", displayStats.earlyCulledCount);
+					ImGui::TextColored(ImVec4(0.2f, 1.0f, 0.4f, 1.0f), "Objects culled early: %u", stats.earlyCulledCount.load());
 					if (auto _tt = Util::HoverTooltipWrapper()) {
 						ImGui::SetTooltip("Culled during scene traversal - maximum CPU savings.");
 					}
@@ -229,7 +229,7 @@ void HiZOcclusion::DrawSettings()
 
                 ImGui::Text("Accumulator registrations:");
                 ImGui::Indent();
-                ImGui::Text("Main pass:   %u", displayStats.accumRegisterCalls);
+                ImGui::Text("Main pass:   %u", stats.accumRegisterCalls.load());
                 ImGui::Unindent();
 			}
 			ImGui::EndChild();
@@ -354,7 +354,7 @@ void HiZOcclusion::DrawSettings()
 		ImGui::End();
 	}
 
-    stats.renderModeCalls = {};
+    stats.Reset();
 }
 
 void HiZOcclusion::DrawOverlay()
@@ -565,25 +565,6 @@ void HiZOcclusion::Prepass()
                      globals::state->frameCount, pendingGeometry.size());
     }
 
-    // Stats are reset each frame during active culling
-    
-    // Copy current stats to displayStats for UI before resetting
-    displayStats = stats;
-    
-    // Reset culling stats for new frame - always reset to avoid accumulation
-    stats.frameIndex = currentFrame;
-    stats.totalTested = 0;
-    stats.resourceSetupDurationMS = 0.0f;
-    stats.recreateDurationMS = 0.0f;
-    stats.visTestPassed = 0;
-    stats.visInsideBounds = 0;
-    stats.visInvalidRadius = 0;
-    stats.defaultValue = 0;
-    stats.culledFrustum = 0;
-    stats.culledNoEarlyOut = 0;
-    stats.earlyCulledCount = 0;
-    stats.accumRegisterCalls = 0;
-
     if (settings.enableBoundsViewer && boundsOverlayUAV) {
         overlayUpdatedThisFrame = false;
     }
@@ -619,6 +600,9 @@ void HiZOcclusion::Prepass()
         }
     }
 
+    // Prepare consolidated geometry list for testing
+    ConsolidatePendingGeometry();
+
     // Update geometry list size stat
     stats.geometryListSize = static_cast<uint32_t>(pendingGeometry.size());
 
@@ -626,16 +610,6 @@ void HiZOcclusion::Prepass()
     if (pendingGeometry.capacity() < 16384) {
         pendingGeometry.reserve(16384);
         geometryBounds.reserve(16384);
-    }
-
-    if (!unCullNextFrame.empty()) {
-        // Re-add previously hidden geometry for continuous testing
-        for (auto& geo : unCullNextFrame) {
-            auto* rawGeo = geo.get();
-            if (rawGeo && !pendingGeometrySet.contains(rawGeo)) {
-                MarkGeometryVisible(rawGeo);
-            }
-        }
     }
 
     if (readbackState.numPendingReads > 0 || !pendingGeometry.empty()) {
@@ -660,7 +634,41 @@ void HiZOcclusion::Prepass()
 
     status = HiZStatus::Running;
     statusMessage.clear();
-};
+}
+
+void HiZOcclusion::ConsolidatePendingGeometry()
+{
+    // Clear global consolidated containers
+    pendingGeometry.clear();
+    pendingGeometrySet.clear();
+
+    // Consolidate thread-local lists
+    {
+        std::lock_guard<std::mutex> lock(threadVectorsMutex);
+        
+        // Count total size first to pre-allocate memory
+        size_t totalCount = 0;
+        for (auto* threadVec : allThreadVectors) {
+            if (threadVec) {
+                totalCount += threadVec->size();
+            }
+        }
+        pendingGeometry.reserve(totalCount);
+
+        // Merge vectors and deduplicate using pendingGeometrySet
+        for (auto* threadVec : allThreadVectors) {
+            if (threadVec) {
+                for (auto* geo : *threadVec) {
+                    if (pendingGeometrySet.insert(geo).second) {
+                        pendingGeometry.emplace_back(geo);
+                    }
+                }
+                // Clear the thread-local vector for the next frame
+                threadVec->clear();
+            }
+        }
+    }
+}
 
 bool HiZOcclusion::InitHiZResources()
 {
@@ -1592,7 +1600,7 @@ void HiZOcclusion::ProcessVisibilityResults(uint32_t bufferIndex) {
                 stats.culledFrustum++;
                 if (settings.cullFrustum) {
                     MarkGeometryOccluded(geo.get());
-                    unCullNextFrame.push_back(geo);
+                    //unCullNextFrame.push_back(geo);
                 } else {
                     MarkGeometryVisible(geo.get());
                 }
@@ -1602,7 +1610,7 @@ void HiZOcclusion::ProcessVisibilityResults(uint32_t bufferIndex) {
                 stats.culledNoEarlyOut++;
                 if (settings.cullNoEarlyOut) {
                     MarkGeometryOccluded(geo.get());
-                    unCullNextFrame.push_back(geo);
+                    //unCullNextFrame.push_back(geo);
                 } else {
                     MarkGeometryVisible(geo.get());
                 }

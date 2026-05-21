@@ -243,7 +243,7 @@ struct HiZOcclusion : OverlayFeature
         uint32_t culledNoEarlyOut = 0;
         
         // Early culling at scene traversal (prevents all downstream CPU work)
-        uint32_t earlyCulledCount = 0;       // geometry culled at AppendVirtual before batching
+        std::atomic<uint32_t> earlyCulledCount = 0;       // geometry culled at AppendVirtual before batching
         
         // Async readback tracking
         uint32_t lastResultFrame = 0;          // frame when results were last updated
@@ -260,8 +260,39 @@ struct HiZOcclusion : OverlayFeature
         float unmapTimeMs = 0.0f;
         float copyDataTimeMs = 0.0f;
 
-        uint32_t accumRegisterCalls = 0;        // per-object accumulator registrations (main pass)
-        std::array<uint32_t, 30> renderModeCalls = {};  // per-render-mode calls (main pass)
+        std::atomic<uint32_t> accumRegisterCalls{ 0 };
+        std::array<std::atomic<uint32_t>, 30> renderModeCalls{};
+
+        void Reset() {
+            totalTested = 0;
+            frameIndex = 0;
+            geometryListSize = 0;
+            visTestPassed = 0;
+            visInsideBounds = 0;
+            visInvalidRadius = 0;
+            defaultValue = 0;
+            culledFrustum = 0;
+            culledNoEarlyOut = 0;
+            
+            earlyCulledCount.store(0, std::memory_order_relaxed);
+            
+            lastResultFrame = 0;
+            staleFrameCount = 0;
+            resourceSetupDurationMS = 0.0f;
+            recreateDurationMS = 0.0f;
+            gpuCullingTimeMs = 0.0f;
+            hiZBuildTimeMs = 0.0f;
+            readbackTimeMs = 0.0f;
+            copyTimeMs = 0.0f;
+            mapTimeMs = 0.0f;
+            unmapTimeMs = 0.0f;
+            copyDataTimeMs = 0.0f;
+            
+            accumRegisterCalls.store(0, std::memory_order_relaxed);
+            for (auto& callCount : renderModeCalls) {
+                callCount.store(0, std::memory_order_relaxed);
+            }
+        }
     };
     CullingStats stats;
     CullingStats displayStats;  // Copy of stats from previous frame for UI display
@@ -281,6 +312,13 @@ struct HiZOcclusion : OverlayFeature
     };
     AsyncReadbackState readbackState;
     
+    // Thread-local vector to hold geometry collected by the current worker thread
+    inline static thread_local std::vector<RE::BSGeometry*> localPendingGeometry;
+
+    // Tracking active thread-local vectors
+    std::vector<std::vector<RE::BSGeometry*>*> allThreadVectors;
+    std::mutex threadVectorsMutex;
+
     // Shared state for async pipeline
     uint32_t numGeometry = 0;  // Number of geometry objects in current batch
     uint32_t numGeometryPending = 0;  // Number of geometry in pending results
@@ -303,12 +341,13 @@ struct HiZOcclusion : OverlayFeature
 
     // Consecutive occluded test counts — SetAppCulled(true) fires when count reaches threshold
     std::unordered_map<RE::BSGeometry*, uint32_t> consecutiveOccludedCount;
-    
+
     void MarkGeometryOccluded(RE::BSGeometry* geometry);
     void MarkGeometryVisible(RE::BSGeometry* geometry);
     void ClearOcclusionState();
 
     void ExecuteVisibilityTests();
+    void ConsolidatePendingGeometry();
 
     struct HiZSettings {
         DirectX::XMFLOAT4 hiZParams;           // 16 (mipCount, conservativeBias, geometryCount, debugMode)
