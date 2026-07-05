@@ -187,7 +187,7 @@ namespace Hair
 		const float wrap = 1;
 		float wrappedNdotL = saturate((dot(fakeN, L) + wrap) / ((1 + wrap) * (1 + wrap)));
 		float diffuseScatter = (1 / Math::PI) * lerp(wrappedNdotL, diffuseKajiya, 0.33);
-		float luma = max(Color::RGBToLuminance(baseColor), 1e-4);
+		float luma = max(Color::Bt709ToLuminance(baseColor), 1e-4);
 		float3 scatterTint = shadow < 1 ? pow(abs(baseColor / luma), 1 - shadow) : 1;
 		S += sqrt(baseColor) * diffuseScatter * scatterTint;
 
@@ -257,7 +257,7 @@ namespace Hair
 
 	float3 Saturation(float3 color, float saturation)
 	{
-		float luminance = Color::RGBToLuminance(color);
+		float luminance = Color::Bt709ToLuminance(color);
 		return saturate(lerp(float3(luminance, luminance, luminance), color, saturation));
 	}
 

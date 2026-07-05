@@ -99,7 +99,7 @@ namespace PBR
 		const float wrap = 1;
 		float wrappedNdotL = saturate((dot(fakeN, L) + wrap) / ((1 + wrap) * (1 + wrap)));
 		float diffuseScatter = (1 / Math::PI) * lerp(wrappedNdotL, diffuseKajiya, 0.33);
-		float luma = Color::RGBToLuminance(material.BaseColor);
+		float luma = Color::Bt709ToLuminance(material.BaseColor);
 		float3 scatterTint = pow(material.BaseColor / max(luma, 1e-5), 1 - shadow);
 		S += sqrt(material.BaseColor) * diffuseScatter * scatterTint;
 
@@ -161,7 +161,9 @@ namespace PBR
 #endif
 			float3 kD = 1 - F;
 
-			lightingOutput.diffuse += detailedLightColor * satNdotL * BRDF::Diffuse_Lambert() * kD;
+			// EON includes BaseColor (rho); direct diffuse is premultiplied by albedo here,
+			// so callers must not multiply by BaseColor again.
+			lightingOutput.diffuse += detailedLightColor * satNdotL * BRDF::Diffuse_EON(material.BaseColor, material.Roughness, satNdotL, satNdotV, VdotL) * kD;
 			lightingOutput.specular += Fr * detailedLightColor * satNdotL;
 
 #if !defined(LANDSCAPE) && !defined(LODLANDSCAPE)
@@ -207,7 +209,10 @@ namespace PBR
 				lightingOutput.diffuse *= layerAttenuation;
 				lightingOutput.specular *= layerAttenuation;
 
-				lightingOutput.coatDiffuse += context.coatLightColor * coatNdotL * BRDF::Diffuse_Lambert();
+				// EON includes CoatColor (rho); coat diffuse is premultiplied by coat albedo here,
+				// so callers must not multiply by CoatColor again.
+				float coatVdotL = dot(coatV, coatL);
+				lightingOutput.coatDiffuse += context.coatLightColor * coatNdotL * BRDF::Diffuse_EON(material.CoatColor, material.CoatRoughness, coatNdotL, coatNdotV, coatVdotL);
 				lightingOutput.specular += coatFr * context.coatLightColor * coatNdotL * material.CoatStrength;
 			}
 #endif
@@ -234,7 +239,8 @@ namespace PBR
 		else
 #endif
 		{
-			lobeWeights.diffuse = material.BaseColor;
+			// EON directional albedo accounts for roughness-dependent grazing-angle response
+			lobeWeights.diffuse = BRDF::EON_DirectionalAlbedo(material.BaseColor, material.Roughness, NdotV);
 
 #if !defined(LANDSCAPE) && !defined(LODLANDSCAPE)
 			[branch] if ((PBRFlags & Flags::Subsurface) != 0)
@@ -264,7 +270,7 @@ namespace PBR
 
 				[branch] if ((PBRFlags & Flags::ColoredCoat) != 0)
 				{
-					float3 coatDiffuseLobeWeight = material.CoatColor * (1 - coatSpecularLobeSpecular);
+					float3 coatDiffuseLobeWeight = BRDF::EON_DirectionalAlbedo(material.CoatColor, material.CoatRoughness, NdotV) * (1 - coatSpecularLobeSpecular);
 					lobeWeights.diffuse += coatDiffuseLobeWeight * material.CoatStrength;
 				}
 				lobeWeights.specular += coatSpecularLobeSpecular * material.CoatStrength;

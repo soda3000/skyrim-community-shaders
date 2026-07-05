@@ -473,9 +473,9 @@ void ExtractEffectLighting(float3 inputColor, out float3 dirColor, out float3 am
 	float3 ambientColorAmb = GetEffectAmbientLighting(skylightingDiffuse);
 	float3 dirLightColorDir = ShadowSampling::GetDirectionalLighting();
 
-	float inputLuma = Color::RGBToLuminance(inputColor);
-	float ambientLuma = Color::RGBToLuminance(ambientColorAmb);
-	float dirLightLuma = Color::RGBToLuminance(dirLightColorDir);
+	float inputLuma = Color::Bt709ToLuminance(inputColor);
+	float ambientLuma = Color::Bt709ToLuminance(ambientColorAmb);
+	float dirLightLuma = Color::Bt709ToLuminance(dirLightColorDir);
 
 	float totalLuma = ambientLuma + dirLightLuma;
 
@@ -885,7 +885,7 @@ PS_OUTPUT main(PS_INPUT input)
 	psout.Specular = float4(psout.Diffuse.xyz, finalColor.w);
 	psout.Albedo = float4(psout.Diffuse.xyz, finalColor.w);
 	psout.Reflectance = float4(psout.Diffuse.xyz, finalColor.w);
-	psout.Masks = float4(Color::RGBToLuminance(psout.Diffuse.xyz).xxx, finalColor.w);
+	psout.Masks = float4(Color::Bt709ToLuminance(psout.Diffuse.xyz).xxx, finalColor.w);
 #		else
 	psout.Albedo = float4(0, 0, 0, finalColor.w);
 	psout.Specular = float4(0, 0, 0, finalColor.w);

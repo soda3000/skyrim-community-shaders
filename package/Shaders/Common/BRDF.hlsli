@@ -37,6 +37,56 @@ namespace BRDF
 		return 1.0 / Math::PI;
 	}
 
+	// [Portsmouth et al. 2024, "EON: A practical energy-preserving rough diffuse BRDF"]
+	// https://arxiv.org/abs/2410.18026
+	static const float ConstantFON1 = 0.5 - 2.0 / (3.0 * Math::PI);
+	static const float ConstantFON2 = 2.0 / 3.0 - 28.0 / (15.0 * Math::PI);
+
+	// FON directional albedo (approx.)
+	float E_FON_Approx(float mu, float r)
+	{
+		float mucomp = 1.0 - mu;
+		const float g1 = 0.0571085289;
+		const float g2 = 0.491881867;
+		const float g3 = -0.332181442;
+		const float g4 = 0.0714429953;
+		float GoverPi = mucomp * (g1 + mucomp * (g2 + mucomp * (g3 + mucomp * g4)));
+		return (1.0 + r * GoverPi) / (1.0 + ConstantFON1 * r);
+	}
+
+	// Evaluates the approximated EON BRDF (includes albedo and 1/PI).
+	//    rho = single-scattering albedo (base color)
+	//      r = roughness in [0, 1]
+	// At r = 0 this reduces exactly to Lambert (rho / PI).
+	float3 Diffuse_EON(float3 rho, float r, float NdotL, float NdotV, float VdotL)
+	{
+		const float eps = 1.0e-7;
+		float mu_i = NdotL;                                        // input angle cos
+		float mu_o = NdotV;                                        // output angle cos
+		float s = VdotL - mu_i * mu_o;                             // QON s term
+		float sovertF = s > 0.0 ? s / max(max(mu_i, mu_o), eps) : s;  // FON s/t
+		float AF = 1.0 / (1.0 + ConstantFON1 * r);                 // FON A coeff.
+		float3 f_ss = (rho / Math::PI) * AF * (1.0 + r * sovertF);  // single-scatter lobe
+		float EFo = E_FON_Approx(mu_o, r);                         // FON wo albedo
+		float EFi = E_FON_Approx(mu_i, r);                         // FON wi albedo
+		float avgEF = AF * (1.0 + ConstantFON2 * r);               // average albedo
+		float3 rho_ms = (rho * rho) * avgEF / (1.0 - rho * (1.0 - avgEF));
+		float3 f_ms = (rho_ms / Math::PI) * max(eps, 1.0 - EFo)  // multi-scatter lobe
+		              * max(eps, 1.0 - EFi) / max(eps, 1.0 - avgEF);
+		return f_ss + f_ms;
+	}
+
+	// EON directional albedo (approx.), for indirect/ambient lighting.
+	// At r = 0 this reduces exactly to rho.
+	float3 EON_DirectionalAlbedo(float3 rho, float r, float NdotV)
+	{
+		float AF = 1.0 / (1.0 + ConstantFON1 * r);      // FON A coeff.
+		float EF = E_FON_Approx(NdotV, r);              // FON wi albedo
+		float avgEF = AF * (1.0 + ConstantFON2 * r);    // average albedo
+		float3 rho_ms = (rho * rho) * avgEF / (1.0 - rho * (1.0 - avgEF));
+		return rho * EF + rho_ms * (1.0 - EF);
+	}
+
 	// [Burley 2012, "Physically-Based Shading at Disney"]
 	float3 Diffuse_Burley(float roughness, float NdotV, float NdotL, float VdotH)
 	{

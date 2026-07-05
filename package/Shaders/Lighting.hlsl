@@ -2765,7 +2765,12 @@ PS_OUTPUT main(PS_INPUT input, bool frontFace : SV_IsFrontFace)
 	if (Permutation::PixelShaderDescriptor & Permutation::LightingFlags::CharacterLight) {
 		float charLightMul = saturate(dot(viewDirection, worldNormal.xyz)) * CharacterLightParams.x + CharacterLightParams.y * saturate(dot(float2(0.164398998, -0.986393988), worldNormal.yz));
 		float charLightColor = min(CharacterLightParams.w, max(0, CharacterLightParams.z * TexCharacterLightProjNoiseSampler.Sample(SampCharacterLightProjNoiseSampler, baseShadowUV).x));
+#		if defined(TRUE_PBR)
+		// PBR direct diffuse is premultiplied by BaseColor (EON); apply it here to match
+		diffuseColor += charLightMul * charLightColor * material.BaseColor;
+#		else
 		diffuseColor += (charLightMul * charLightColor).xxx;
+#		endif
 	}
 #	endif
 
@@ -2916,10 +2921,12 @@ PS_OUTPUT main(PS_INPUT input, bool frontFace : SV_IsFrontFace)
 
 #	if defined(TRUE_PBR)
 	{
-		float3 directLightsDiffuseInput = diffuseColor * material.BaseColor;
+		// BaseColor is already applied inside BRDF::Diffuse_EON (PBR::GetDirectLightInput)
+		float3 directLightsDiffuseInput = diffuseColor;
 		[branch] if ((PBRFlags & PBR::Flags::ColoredCoat) != 0)
 		{
-			directLightsDiffuseInput = lerp(directLightsDiffuseInput, material.CoatColor * coatLightsDiffuseColor, material.CoatStrength);
+			// CoatColor is already applied inside BRDF::Diffuse_EON (PBR::GetDirectLightInput)
+			directLightsDiffuseInput = lerp(directLightsDiffuseInput, coatLightsDiffuseColor, material.CoatStrength);
 		}
 
 		color.xyz += directLightsDiffuseInput;
@@ -3226,10 +3233,10 @@ PS_OUTPUT main(PS_INPUT input, bool frontFace : SV_IsFrontFace)
 
 #		if defined(SNOW)
 #			if defined(TRUE_PBR)
-	psout.Parameters.x = Color::RGBToLuminanceAlternative(specularColor);
+	psout.Parameters.x = Color::RGBToLumaVanilla(specularColor);
 	psout.Parameters.y = 0;
 #			else
-	psout.Parameters.x = Color::RGBToLuminanceAlternative(lightsSpecularColor);
+	psout.Parameters.x = Color::RGBToLumaVanilla(lightsSpecularColor);
 #			endif
 	psout.Parameters.w = psout.Diffuse.w;
 #		endif

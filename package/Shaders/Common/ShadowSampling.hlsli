@@ -177,9 +177,9 @@ namespace ShadowSampling
 
 		float3 dirLightColorDir = GetDirectionalLighting();
 
-		float inputLuma = Color::RGBToLuminance(inputColor);
-		float ambientLuma = Color::RGBToLuminance(ambientColorAmb);
-		float dirLightLuma = Color::RGBToLuminance(dirLightColorDir);
+		float inputLuma = Color::Bt709ToLuminance(inputColor);
+		float ambientLuma = Color::Bt709ToLuminance(ambientColorAmb);
+		float dirLightLuma = Color::Bt709ToLuminance(dirLightColorDir);
 
 		float totalLuma = ambientLuma + dirLightLuma;
 

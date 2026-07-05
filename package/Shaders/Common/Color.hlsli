@@ -36,17 +36,26 @@ namespace Color
 			dot(v4, kBlueVec4) + dot(v2, kBlueVec2));
 	}
 
-	float RGBToLuminance(float3 color)
+	/*	Rec. 709 / sRGB
+		Input: Linear-space color
+		Output: Luminance (Y in CIE XYZ)
+	*/ 
+	float Bt709ToLuminance(float3 color)
 	{
 		return dot(color, float3(0.2125, 0.7154, 0.0721));
 	}
 
-	float RGBToLuminanceAlternative(float3 color)
+	// Rounded BT.601
+	float RGBToLumaVanilla(float3 color)
 	{
 		return dot(color, float3(0.3, 0.59, 0.11));
 	}
 
-	float RGBToLuminance2(float3 color)
+	/*	Rec. 601
+		Input: Gamma-space color
+		Output: Luma (Y')
+	*/ 
+	float RGBToLuma601(float3 color)
 	{
 		return dot(color, float3(0.299, 0.587, 0.114));
 	}
@@ -72,7 +81,7 @@ namespace Color
 
 	float3 Saturation(float3 color, float saturation)
 	{
-		float grey = RGBToLuminance(color);
+		float grey = Bt709ToLuminance(color);
 		color.x = max(lerp(grey, color.x, saturation), 0.0f);
 		color.y = max(lerp(grey, color.y, saturation), 0.0f);
 		color.z = max(lerp(grey, color.z, saturation), 0.0f);
@@ -400,7 +409,7 @@ namespace Color
 				return;
 			}
 
-			float luminance = RGBToLuminance(col.xyz);
+			float luminance = Bt709ToLuminance(col.xyz);
 			if (luminance < -FLT_MIN)  // 1.175494351e-38f
 			{
 				if (type == 1) {
@@ -409,8 +418,8 @@ namespace Color
 					// This should work even in case "positiveLuminance" was <= 0, as it will simply make the color black.
 					float3 positiveColor = max(col.xyz, 0.0);
 					float3 negativeColor = min(col.xyz, 0.0);
-					float positiveLuminance = RGBToLuminance(positiveColor);
-					float negativeLuminance = RGBToLuminance(negativeColor);
+					float positiveLuminance = Bt709ToLuminance(positiveColor);
+					float negativeLuminance = Bt709ToLuminance(negativeColor);
 #pragma warning(disable: 4008)
 					float negativePositiveLuminanceRatio = positiveLuminance / -negativeLuminance;
 #pragma warning(default: 4008)
@@ -509,7 +518,7 @@ float3 Sign_Fast(float3 x) { return float3(Sign_Fast(x.x), Sign_Fast(x.y), Sign_
 
 float GetLuminance(float3 color, uint colorSpace = CS_DEFAULT)
 {
-	return (colorSpace == CS_BT2020) ? dot(color, Rec2020_Luminance) : Color::RGBToLuminance(color);
+	return (colorSpace == CS_BT2020) ? dot(color, Rec2020_Luminance) : Color::Bt709ToLuminance(color);
 }
 
 float3 FromColorSpaceToColorSpace(float3 color, uint colorSpaceIn, uint colorSpaceOut)

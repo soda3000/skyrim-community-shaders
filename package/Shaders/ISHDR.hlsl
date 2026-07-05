@@ -113,7 +113,7 @@ PS_OUTPUT main(PS_INPUT input)
 		float3 imageColor = clamp(ImageTex.Sample(ImageSampler, texCoord).xyz, 0.0, 50.0);  // Clamp to reasonable HDR bounds
 
 #		if defined(RGB2LUM)
-		imageColor = Color::RGBToLuminance(imageColor);
+		imageColor = Color::Bt709ToLuminance(imageColor);
 #		elif (defined(LUM) || defined(LUMCLAMP)) && !defined(DOWNADAPT)
 		imageColor = imageColor.x;
 #		endif
@@ -164,7 +164,7 @@ PS_OUTPUT main(PS_INPUT input)
 	}
 	else
 	{
-		float maxCol = Color::RGBToLuminance(inputColor);
+		float maxCol = Color::Bt709ToLuminance(inputColor);
 		float mappedMax = GetTonemapFactorReinhard(maxCol, isHDR).x;
 		float3 compressedHuePreserving = inputColor * mappedMax / maxCol;
 		blendedColor = compressedHuePreserving;
@@ -175,7 +175,7 @@ PS_OUTPUT main(PS_INPUT input)
 		blendedColor += bloomMask * bloomColor;
 	}
 
-	float blendedLuminance = Color::RGBToLuminance(blendedColor);
+	float blendedLuminance = Color::Bt709ToLuminance(blendedColor);
 	float3 tintedColor = Cinematic.w * lerp(lerp(blendedLuminance, blendedColor, Cinematic.x), blendedLuminance * Tint.xyz, Tint.w).xyz;
 	float3 contrastedColor = lerp(avgValue.x, tintedColor, Cinematic.z);
 
@@ -196,7 +196,7 @@ PS_OUTPUT main(PS_INPUT input)
 		float peakWhiteRatio = max(hdrShared.z / paperWhiteNits, 1.0);  // peakNits / paperWhite
 
 		// reduce highlights
-		float y_in = Color::RGBToLuminance(outputColor);
+		float y_in = Color::Bt709ToLuminance(outputColor);
 		float highlight_start = 1.f;
 		float y_in_normalized = y_in / highlight_start;
 		float y_out = (y_in_normalized > 1.0) ? pow(max(0.0, y_in_normalized), 0.85) : y_in_normalized;

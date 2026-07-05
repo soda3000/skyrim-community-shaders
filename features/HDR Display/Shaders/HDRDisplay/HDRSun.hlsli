@@ -36,7 +36,7 @@ namespace HDRSun
 		float maxBoost = max(kMinHdrSunBoost, peakRatio * menuSunMul);
 
 		// --- weight 0..1: local brightness / alpha / UV rim ---
-		float L = max(Color::RGBToLuminance(baseColor.xyz), 0.0f);
+		float L = max(Color::Bt709ToLuminance(baseColor.xyz), 0.0f);
 		float highlight = max(1.0f - exp(-L), saturate(L));
 		float a = saturate(baseColor.w);
 		float alphaWeight = a * a;

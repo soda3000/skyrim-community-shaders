@@ -30,7 +30,7 @@ namespace DynamicCubemaps
 
 		float3 finalIrradiance = 0;
 
-		float directionalAmbientColorSpecular = Color::RGBToLuminance(Color::Ambient(
+		float directionalAmbientColorSpecular = Color::Bt709ToLuminance(Color::Ambient(
 													max(0, SharedData::GetAmbient(R)))) *
 		                                        Color::ReflectionNormalisationScale;
 
@@ -45,21 +45,21 @@ namespace DynamicCubemaps
 #		if defined(SKYLIGHTING)
 			if (SharedData::InInterior) {
 				float3 specularIrradiance = EnvTexture.SampleLevel(SampColorSampler, R, level);
-				float specularIrradianceLuminance = Color::RGBToLuminance(EnvTexture.SampleLevel(SampColorSampler, R, 15));
+				float specularIrradianceLuminance = Color::Bt709ToLuminance(EnvTexture.SampleLevel(SampColorSampler, R, 15));
 				specularIrradiance = (specularIrradiance / max(specularIrradianceLuminance, 0.001)) * directionalAmbientColorSpecular;
 				finalIrradiance = Color::IrradianceToLinear(specularIrradiance);
 			} else {
 				float3 specularIrradianceReflections = 0.0;
 				if (skylightingSpecular > 0.0) {
 					specularIrradianceReflections = EnvReflectionsTexture.SampleLevel(SampColorSampler, R, level);
-					float lum = Color::RGBToLuminance(EnvReflectionsTexture.SampleLevel(SampColorSampler, R, 15));
+					float lum = Color::Bt709ToLuminance(EnvReflectionsTexture.SampleLevel(SampColorSampler, R, 15));
 					specularIrradianceReflections = (specularIrradianceReflections / max(lum, 0.001)) * directionalAmbientColorSpecular;
 					specularIrradianceReflections = Color::IrradianceToLinear(specularIrradianceReflections);
 				}
 				float3 specularIrradiance = 0.0;
 				if (skylightingSpecular < 1.0) {
 					specularIrradiance = EnvTexture.SampleLevel(SampColorSampler, R, level);
-					float lum = Color::RGBToLuminance(EnvTexture.SampleLevel(SampColorSampler, R, 15));
+					float lum = Color::Bt709ToLuminance(EnvTexture.SampleLevel(SampColorSampler, R, 15));
 					float dalcScaled = Color::IrradianceToGamma(Color::IrradianceToLinear(directionalAmbientColorSpecular) * skylightingSpecular);
 					specularIrradiance = (specularIrradiance / max(lum, 0.001)) * dalcScaled;
 					specularIrradiance = Color::IrradianceToLinear(specularIrradiance);
@@ -68,7 +68,7 @@ namespace DynamicCubemaps
 			}
 #		else
 			float3 specularIrradiance = EnvReflectionsTexture.SampleLevel(SampColorSampler, R, level);
-			float specularIrradianceLuminance = Color::RGBToLuminance(EnvReflectionsTexture.SampleLevel(SampColorSampler, R, 15));
+			float specularIrradianceLuminance = Color::Bt709ToLuminance(EnvReflectionsTexture.SampleLevel(SampColorSampler, R, 15));
 			specularIrradiance = (specularIrradiance / max(specularIrradianceLuminance, 0.001)) * directionalAmbientColorSpecular;
 			finalIrradiance = Color::IrradianceToLinear(specularIrradiance);
 #		endif
@@ -95,7 +95,7 @@ namespace DynamicCubemaps
 		float2 specularBRDF = BRDF::EnvBRDF(roughness, NoV);
 
 		float3 finalIrradiance = 0;
-		float directionalAmbientColorSpecular = Color::RGBToLuminance(Color::Ambient(max(0, SharedData::GetAmbient(R)))) * Color::ReflectionNormalisationScale;
+		float directionalAmbientColorSpecular = Color::Bt709ToLuminance(Color::Ambient(max(0, SharedData::GetAmbient(R)))) * Color::ReflectionNormalisationScale;
 
 #		if defined(SKYLIGHTING)
 		float skylightingSpecular = 0.0;
@@ -108,21 +108,21 @@ namespace DynamicCubemaps
 #		if defined(SKYLIGHTING)
 		if (SharedData::InInterior) {
 			float3 specularIrradiance = EnvTexture.SampleLevel(SampColorSampler, R, level);
-			float specularIrradianceLuminance = Color::RGBToLuminance(EnvTexture.SampleLevel(SampColorSampler, R, 15));
+			float specularIrradianceLuminance = Color::Bt709ToLuminance(EnvTexture.SampleLevel(SampColorSampler, R, 15));
 			specularIrradiance = (specularIrradiance / max(specularIrradianceLuminance, 0.001)) * directionalAmbientColorSpecular;
 			finalIrradiance = Color::IrradianceToLinear(specularIrradiance);
 		} else {
 			float3 specularIrradianceReflections = 0.0;
 			if (skylightingSpecular > 0.0) {
 				specularIrradianceReflections = EnvReflectionsTexture.SampleLevel(SampColorSampler, R, level);
-				float lum = Color::RGBToLuminance(EnvReflectionsTexture.SampleLevel(SampColorSampler, R, 15));
+				float lum = Color::Bt709ToLuminance(EnvReflectionsTexture.SampleLevel(SampColorSampler, R, 15));
 				specularIrradianceReflections = (specularIrradianceReflections / max(lum, 0.001)) * directionalAmbientColorSpecular;
 				specularIrradianceReflections = Color::IrradianceToLinear(specularIrradianceReflections);
 			}
 			float3 specularIrradiance = 0.0;
 			if (skylightingSpecular < 1.0) {
 				specularIrradiance = EnvTexture.SampleLevel(SampColorSampler, R, level);
-				float lum = Color::RGBToLuminance(EnvTexture.SampleLevel(SampColorSampler, R, 15));
+				float lum = Color::Bt709ToLuminance(EnvTexture.SampleLevel(SampColorSampler, R, 15));
 				float dalcScaled = Color::IrradianceToGamma(Color::IrradianceToLinear(directionalAmbientColorSpecular) * skylightingSpecular);
 				specularIrradiance = (specularIrradiance / max(lum, 0.001)) * dalcScaled;
 				specularIrradiance = Color::IrradianceToLinear(specularIrradiance);
@@ -131,7 +131,7 @@ namespace DynamicCubemaps
 		}
 #		else
 		float3 specularIrradiance = EnvReflectionsTexture.SampleLevel(SampColorSampler, R, level);
-		float specularIrradianceLuminance = Color::RGBToLuminance(EnvReflectionsTexture.SampleLevel(SampColorSampler, R, 15));
+		float specularIrradianceLuminance = Color::Bt709ToLuminance(EnvReflectionsTexture.SampleLevel(SampColorSampler, R, 15));
 		specularIrradiance = (specularIrradiance / max(specularIrradianceLuminance, 0.001)) * directionalAmbientColorSpecular;
 		finalIrradiance = Color::IrradianceToLinear(specularIrradiance);
 #		endif
