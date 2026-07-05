@@ -9,7 +9,6 @@ RWTexture3D<float4> LightScattering : register(u0);
 
 #include "Common/Random.hlsli"
 #include "ExponentialHeightFog/VolumetricFogCSCommon.hlsli"
-#include "IBL/IBL.hlsli"
 #if defined(TERRAIN_SHADOWS)
 #	include "TerrainShadows/TerrainShadows.hlsli"
 #endif
@@ -225,8 +224,6 @@ float3 ComputeSkyLightScattering(float3 positionWS, float3 viewDirection)
 		SharedData::exponentialHeightFogSettings.fogInscatteringColor.rgb *
 		SharedData::exponentialHeightFogSettings.fogInscatteringColor.a *
 		skyVisibility;
-	[branch] if (VolumetricFogHasIBL)
-		skyLighting = ImageBasedLighting::GetIBLColorOccluded(skyDirection, skyVisibility);
 
 	return skyLighting *
 	       SharedData::exponentialHeightFogSettings.volumetricSkyLightingIntensity;

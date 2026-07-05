@@ -191,8 +191,7 @@ PS_OUTPUT main(PS_INPUT input)
 #		endif
 
 	if (isHDR) {
-		if (!ENABLE_LL)
-			outputColor = Color::GammaToLinearSafe(outputColor);
+		outputColor = Color::GammaToLinearSafe(outputColor);
 		float paperWhiteNits = max(hdrShared.y, 1e-6);
 		float peakWhiteRatio = max(hdrShared.z / paperWhiteNits, 1.0);  // peakNits / paperWhite
 
@@ -212,12 +211,9 @@ PS_OUTPUT main(PS_INPUT input)
 		outputColor = Color::BT709ToBT2020(outputColor);
 		outputColor = exp2(DisplayMapping::RangeCompress(log2(max(0, outputColor)), log2(0.4 * peakWhiteRatio), log2(peakWhiteRatio), log2(100.f)));
 		outputColor = Color::BT2020ToBT709(outputColor);
-		if (!ENABLE_LL)
-			outputColor = Color::LinearToGammaSafe(outputColor);
+		outputColor = Color::LinearToGammaSafe(outputColor);
 	} else {
 		outputColor = max(0, outputColor);
-		if (ENABLE_LL)
-			outputColor = Color::LinearToGammaSafe(outputColor);
 		outputColor = FrameBuffer::ToSRGBColor(outputColor);
 	}
 

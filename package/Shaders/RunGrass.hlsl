@@ -13,10 +13,6 @@
 #	define GRASS
 #endif  // GRASS_LIGHTING
 
-#if !defined(DYNAMIC_CUBEMAPS) && defined(IBL)
-#	undef IBL
-#endif
-
 struct VS_INPUT
 {
 	float4 Position: POSITION0;
@@ -360,10 +356,6 @@ cbuffer AlphaTestRefCB : register(b11)
 #		include "Skylighting/Skylighting.hlsli"
 #	endif
 
-#	if defined(IBL)
-#		include "IBL/IBL.hlsli"
-#	endif
-
 #	if defined(EXP_HEIGHT_FOG)
 #		include "ExponentialHeightFog/ExponentialHeightFog.hlsli"
 #	endif
@@ -503,8 +495,7 @@ PS_OUTPUT main(PS_INPUT input, bool frontFace : SV_IsFrontFace)
 	float3 transmissionColor = 0;
 #			endif  // TRUE_PBR
 
-	float llDirLightMult = (SharedData::linearLightingSettings.enableLinearLighting && !SharedData::linearLightingSettings.isDirLightLinear) ? SharedData::linearLightingSettings.dirLightMult : 1.0f;
-	float3 dirLightColor = Color::DirectionalLight(SharedData::DirLightColor.xyz / max(llDirLightMult, 1e-5), SharedData::linearLightingSettings.isDirLightLinear) * llDirLightMult;
+	float3 dirLightColor = SharedData::DirLightColor.xyz;
 	float3 dirLightColorMultiplier = 1;
 
 #			if defined(EXP_HEIGHT_FOG)
@@ -654,16 +645,6 @@ PS_OUTPUT main(PS_INPUT input, bool frontFace : SV_IsFrontFace)
 
 	float3 directionalAmbientColor = Color::Ambient(max(0, SharedData::GetAmbient(normal)));
 
-#				if defined(IBL)
-	if (SharedData::iblSettings.EnableIBL) {
-#					if defined(SKYLIGHTING)
-		directionalAmbientColor = ImageBasedLighting::GetDiffuseIBLOccluded(directionalAmbientColor, -normal, skylightingDiffuse);
-#					else
-		directionalAmbientColor = ImageBasedLighting::GetDiffuseIBL(directionalAmbientColor, -normal);
-#					endif
-	}
-#				endif
-
 	diffuseColor += directionalAmbientColor;
 	diffuseColor += subsurfaceColor * albedo;
 	diffuseColor *= albedo;
@@ -671,9 +652,6 @@ PS_OUTPUT main(PS_INPUT input, bool frontFace : SV_IsFrontFace)
 	directionalAmbientColor *= albedo;
 
 #				if defined(SKYLIGHTING)
-#					if defined(IBL)
-	if (!SharedData::iblSettings.EnableIBL)
-#					endif
 	{
 		Skylighting::ApplySkylighting(diffuseColor, directionalAmbientColor, albedo, skylightingDiffuse);
 	}
@@ -743,8 +721,7 @@ PS_OUTPUT main(PS_INPUT input)
 
 	float4 shadowColor = TexShadowMaskSampler.Load(int3(input.HPosition.xy, 0));
 
-	float llDirLightMult = (SharedData::linearLightingSettings.enableLinearLighting && !SharedData::linearLightingSettings.isDirLightLinear) ? SharedData::linearLightingSettings.dirLightMult : 1.0f;
-	float3 dirLightColor = Color::DirectionalLight(SharedData::DirLightColor.xyz / max(llDirLightMult, 1e-5), SharedData::linearLightingSettings.isDirLightLinear) * llDirLightMult;
+	float3 dirLightColor = SharedData::DirLightColor.xyz;
 
 	// Apply world shadow (terrain shadows, cloud shadows) directly to light color
 	if (!SharedData::InInterior)
@@ -825,16 +802,6 @@ PS_OUTPUT main(PS_INPUT input)
 
 	float3 directionalAmbientColor = Color::Ambient(max(0, SharedData::GetAmbient(normal)));
 
-#			if defined(IBL)
-	if (SharedData::iblSettings.EnableIBL) {
-#				if defined(SKYLIGHTING)
-		directionalAmbientColor = ImageBasedLighting::GetDiffuseIBLOccluded(directionalAmbientColor, -normal, skylightingDiffuse);
-#				else
-		directionalAmbientColor = ImageBasedLighting::GetDiffuseIBL(directionalAmbientColor, -normal);
-#				endif
-	}
-#			endif
-
 	diffuseColor += directionalAmbientColor;
 
 	float3 albedo = baseColor.xyz * vertexColor;
@@ -843,12 +810,7 @@ PS_OUTPUT main(PS_INPUT input)
 	directionalAmbientColor *= albedo;
 
 #			if defined(SKYLIGHTING)
-#				if defined(IBL)
-	if (!SharedData::iblSettings.EnableIBL)
-#				endif
-	{
-		Skylighting::ApplySkylighting(diffuseColor, directionalAmbientColor, albedo, skylightingDiffuse);
-	}
+	Skylighting::ApplySkylighting(diffuseColor, directionalAmbientColor, albedo, skylightingDiffuse);
 #			endif
 
 	psout.Diffuse.xyz = diffuseColor;

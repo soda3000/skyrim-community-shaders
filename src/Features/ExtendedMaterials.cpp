@@ -5,7 +5,6 @@
 
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
 	ExtendedMaterials::Settings,
-	EnableComplexMaterial,
 	EnableParallax,
 	EnableTerrain,
 	EnableHeightBlending,
@@ -27,20 +26,6 @@ void ExtendedMaterials::DataLoaded()
 
 void ExtendedMaterials::DrawSettings()
 {
-	if (ImGui::TreeNodeEx(T(TKEY("complex_material"), "Complex Material"), ImGuiTreeNodeFlags_DefaultOpen)) {
-		ImGui::Checkbox(T(TKEY("enable_complex_material"), "Enable Complex Material"), (bool*)&settings.EnableComplexMaterial);
-		if (auto _tt = Util::HoverTooltipWrapper()) {
-			ImGui::Text("%s", T(TKEY("enable_complex_material_tooltip"),
-								  "Enables support for the Complex Material specification which makes use of the environment mask. "
-								  "This includes parallax, as well as more realistic metals and specular reflections. "
-								  "May lead to some warped textures on modded content which have an invalid alpha channel in their environment mask. "));
-		}
-
-		ImGui::Spacing();
-		ImGui::Spacing();
-		ImGui::TreePop();
-	}
-
 	if (ImGui::TreeNodeEx(T(TKEY("parallax"), "Parallax"), ImGuiTreeNodeFlags_DefaultOpen)) {
 		ImGui::Checkbox(T(TKEY("enable_parallax"), "Enable Parallax"), (bool*)&settings.EnableParallax);
 		if (auto _tt = Util::HoverTooltipWrapper()) {

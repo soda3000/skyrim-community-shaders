@@ -932,8 +932,7 @@ float3 GetSunColor(float3 normal, float3 viewDirection, float3 worldPosition)
 	float3 reflectionDirection = reflect(viewDirection, normal);
 	float reflectionMul = exp2(VarAmounts.x * log2(saturate(dot(reflectionDirection, SunDir.xyz))));
 
-	float llDirLightMult = (SharedData::linearLightingSettings.enableLinearLighting && !SharedData::linearLightingSettings.isDirLightLinear) ? SharedData::linearLightingSettings.dirLightMult : 1.0f;
-	float3 sunColor = Color::DirectionalLight((SunColor.xyz * SunDir.w) / max(llDirLightMult, 1e-5), SharedData::linearLightingSettings.isDirLightLinear) * (1.0 - exp(-DeepColor.w)) * llDirLightMult;
+	float3 sunColor = (SunColor.xyz * SunDir.w) * (1.0 - exp(-DeepColor.w));
 #				if defined(EXP_HEIGHT_FOG)
 	if (SharedData::exponentialHeightFogSettings.enabled) {
 		sunColor *= ExponentialHeightFog::GetSunlightFogAttenuation(worldPosition.xyz, FrameBuffer::CameraPosAdjust.xyz);
@@ -950,10 +949,6 @@ float3 GetSunColor(float3 normal, float3 viewDirection, float3 worldPosition)
 
 #		if defined(ISL) && defined(LIGHT_LIMIT_FIX)
 #			include "InverseSquareLighting/InverseSquareLighting.hlsli"
-#		endif
-
-#		if defined(IBL)
-#			include "IBL/IBL.hlsli"
 #		endif
 
 PS_OUTPUT main(PS_INPUT input)
@@ -1167,11 +1162,6 @@ PS_OUTPUT main(PS_INPUT input)
 
 	fogDistanceFactor = Color::FogAlpha(fogDistanceFactor);
 
-#						if defined(IBL)
-	if (SharedData::iblSettings.EnableIBL) {
-		fogColor = ImageBasedLighting::GetFogIBLColor(fogColor);
-	}
-#						endif
 #						if defined(EXP_HEIGHT_FOG)
 	if (SharedData::exponentialHeightFogSettings.enabled) {
 		float4 exponentialHeightFog = ExponentialHeightFog::GetExponentialHeightFog(input.WPosition.xyz, FrameBuffer::CameraPosAdjust.xyz, fogColor, float4(input.HPosition.xy * FrameBuffer::DynamicResolutionParams2.xy, input.HPosition.z, 1));
@@ -1218,11 +1208,6 @@ PS_OUTPUT main(PS_INPUT input)
 
 	fogDistanceFactor = Color::FogAlpha(fogDistanceFactor);
 
-#						if defined(IBL)
-	if (SharedData::iblSettings.EnableIBL) {
-		preFogColor = ImageBasedLighting::GetFogIBLColor(preFogColor);
-	}
-#						endif
 #						if defined(EXP_HEIGHT_FOG)
 	if (SharedData::exponentialHeightFogSettings.enabled) {
 		float4 exponentialHeightFog = ExponentialHeightFog::GetExponentialHeightFog(input.WPosition.xyz, FrameBuffer::CameraPosAdjust.xyz, preFogColor, float4(input.HPosition.xy * FrameBuffer::DynamicResolutionParams2.xy, input.HPosition.z, 1));
@@ -1255,11 +1240,7 @@ PS_OUTPUT main(PS_INPUT input)
 		fogFactor = 0;
 	}
 #						endif
-#						if defined(IBL)
-	if (SharedData::iblSettings.EnableIBL) {
-		fogColor = ImageBasedLighting::GetFogIBLColor(fogColor);
-	}
-#						endif
+
 	refractionColor = lerp(refractionColor, fogColor, Color::FogAlpha(fogFactor));
 
 	float3 finalColor = lerp(refractionColor, finalColorPreFog, diffuseOutput.refractionMul);

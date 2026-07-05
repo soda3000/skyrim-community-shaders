@@ -2,7 +2,6 @@
 
 #include "Deferred.h"
 #include "Features/CloudShadows.h"
-#include "Features/IBL.h"
 #include "Features/LightLimitFix.h"
 #include "Features/Skylighting.h"
 #include "Features/TerrainShadows.h"
@@ -389,13 +388,7 @@ void ExponentialHeightFog::Prepass()
 		lightLimitFix.lightIndexList &&
 		lightLimitFix.lightGrid;
 	auto* depthSrv = Util::GetCurrentSceneDepthSRV(true);
-	auto& ibl = globals::features::ibl;
 	auto& skylighting = globals::features::skylighting;
-	const bool hasIBL = ibl.loaded &&
-	                    ibl.settings.EnableIBL != 0 &&
-	                    !ibl.IsDisabledForCurrentScene() &&
-	                    ibl.envIBLTexture &&
-	                    ibl.skyIBLTexture;
 	const bool hasSkylighting = skylighting.loaded && skylighting.texProbeArray;
 
 	const bool temporalReprojection = Util::GetTemporal();
@@ -412,7 +405,6 @@ void ExponentialHeightFog::Prepass()
 		currentGridSize.z,
 		(directionalShadowMap && directionalShadowLightData ? 1u : 0u) |
 			(depthSrv ? 2u : 0u) |
-			(hasIBL ? 4u : 0u) |
 			(hasSkylighting ? 8u : 0u) |
 			(depthSrv && temporalHistoryValid && hasConservativeDepthHistory ? 16u : 0u) |
 			(hasLocalLightData ? 32u : 0u)
@@ -485,12 +477,7 @@ void ExponentialHeightFog::Prepass()
 
 	context->CSSetShaderResources(17, 1, &depthSrv);
 	ID3D11ShaderResourceView* skylightingSrv = hasSkylighting ? skylighting.texProbeArray->srv.get() : nullptr;
-	ID3D11ShaderResourceView* iblSrvs[2]{
-		hasIBL ? ibl.envIBLTexture->srv.get() : nullptr,
-		hasIBL ? ibl.skyIBLTexture->srv.get() : nullptr
-	};
 	context->CSSetShaderResources(50, 1, &skylightingSrv);
-	context->CSSetShaderResources(76, 2, iblSrvs);
 
 	if (depthSrv) {
 		ID3D11UnorderedAccessView* uavs[1]{ conservativeDepth->uav.get() };

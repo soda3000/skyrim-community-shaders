@@ -52,7 +52,6 @@ namespace SharedData
 
 	struct CPMSettings
 	{
-		bool EnableComplexMaterial;
 		bool EnableParallax;
 		bool EnableTerrainParallax;
 		bool EnableHeightBlending;
@@ -60,6 +59,7 @@ namespace SharedData
 		bool ExtendShadows;
 		bool EnableParallaxWarpingFix;
 		bool pad0;
+		bool pad1;
 	};
 
 	struct CubemapCreatorSettings
@@ -192,60 +192,12 @@ namespace SharedData
 		float2 pad0;
 	};
 
-	struct IBLSettings
-	{
-		uint EnableIBL;
-		uint PreserveFogLuminance;
-		uint UseStaticIBL;
-		float DALCAmount;
-		float EnvIBLScale;
-		float SkyIBLScale;
-		float EnvIBLSaturation;
-		float SkyIBLSaturation;
-		float FogAmount;
-		uint DALCMode;  // 0: Luminance Ratio, 1: Color Ratio, 2: DALC + Sky, 3: DALC + Sky (Directional)
-		float pad0;
-		float pad1;
-	};
-
 	struct ExtendedTranslucencySettings
 	{
 		uint MaterialModel;  // [0,1,2,3] The MaterialModel
 		float Reduction;     // [0, 1.0] The factor to reduce the transparency to matain the average transparency [0,1]
 		float Softness;      // [0, 2.0] The soft remap upper limit [0,2]
 		float Strength;      // [0, 1.0] The inverse blend weight of the effect
-	};
-
-	struct LinearLightingSettings
-	{
-		uint enableLinearLighting;
-		uint isDirLightLinear;
-		float dirLightMult;
-		float lightGamma;
-		float colorGamma;
-		float emitColorGamma;
-		float glowmapGamma;
-		float ambientGamma;
-		float fogGamma;
-		float fogAlphaGamma;
-		float effectGamma;
-		float effectAlphaGamma;
-		float skyGamma;
-		float waterGamma;
-		float vlGamma;
-		float vanillaDiffuseColorMult;
-		float directionalLightMult;
-		float pointLightMult;
-		float ambientMult;
-		float emitColorMult;
-		float glowmapMult;
-		float effectLightingMult;
-		float membraneEffectMult;
-		float bloodEffectMult;
-		float projectedEffectMult;
-		float deferredEffectMult;
-		float otherEffectMult;
-		uint pad0;
 	};
 
 	struct TerrainBlendingSettings
@@ -323,9 +275,7 @@ namespace SharedData
 		LODBlendingSettings lodBlendingSettings;
 		HairSpecularSettings hairSpecularSettings;
 		TerrainVariationSettings terrainVariationSettings;
-		IBLSettings iblSettings;
 		ExtendedTranslucencySettings extendedTranslucencySettings;
-		LinearLightingSettings linearLightingSettings;
 		TerrainBlendingSettings terrainBlendingSettings;
 		ExponentialHeightFogSettings exponentialHeightFogSettings;
 		TruePBRSettings truePBRSettings;

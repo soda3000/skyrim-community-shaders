@@ -12,12 +12,10 @@
 #include "Features/GrassLighting.h"
 #include "Features/HDRDisplay.h"
 #include "Features/HairSpecular.h"
-#include "Features/IBL.h"
 #include "Features/InteriorSun.h"
 #include "Features/InverseSquareLighting.h"
 #include "Features/LODBlending.h"
 #include "Features/LightLimitFix.h"
-#include "Features/LinearLighting.h"
 #include "Features/PerformanceOverlay.h"
 #include "Features/RemoteControl.h"
 #include "Features/RenderDoc.h"
@@ -242,14 +240,12 @@ const std::vector<Feature*>& Feature::GetFeatureList()
 		&globals::features::hairSpecular,
 		&globals::features::interiorSun,
 		&globals::features::terrainVariation,
-		&globals::features::ibl,
 		&globals::features::extendedTranslucency,
 		&globals::features::upscaling,
 		&globals::features::renderDoc,
 		&globals::features::remoteControl,
 		&globals::features::csEditor,
 		&globals::features::screenshotFeature,
-		&globals::features::linearLighting,
 		&globals::features::unifiedWater,
 		&globals::features::exponentialHeightFog,
 		&globals::features::hdrDisplay,

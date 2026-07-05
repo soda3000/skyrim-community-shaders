@@ -126,10 +126,6 @@ float SimplexNoise(float3 v)
 									 dot(p2, x2), dot(p3, x3)));
 }
 
-#	if defined(IBL)
-#		include "IBL/IBL.hlsli"
-#	endif
-
 #	if defined(EXP_HEIGHT_FOG) && defined(APPLY_FOG)
 SamplerState SampColorSampler : register(s9);
 #		include "ExponentialHeightFog/ExponentialHeightFog.hlsli"
@@ -180,11 +176,6 @@ PS_OUTPUT main(PS_INPUT input)
 	float fogDistanceFactor = (2 * CameraNearFar.x * CameraNearFar.y) / ((CameraNearFar.y + CameraNearFar.x) - (2 * (1.01 * depth - 0.01) - 1) * (CameraNearFar.y - CameraNearFar.x));
 	float fogFactor = min(FogParam.w, pow(saturate(fogDistanceFactor * FogParam.y - FogParam.x), FogParam.z));
 	float3 fogColor = Color::Fog(lerp(FogNearColor.xyz, FogFarColor.xyz, fogFactor));
-#		if defined(IBL)
-	if (SharedData::iblSettings.EnableIBL) {
-		fogColor = ImageBasedLighting::GetFogIBLColor(fogColor);
-	}
-#		endif
 #		if defined(EXP_HEIGHT_FOG)
 	bool exponentialHeightFogEnabled = SharedData::exponentialHeightFogSettings.enabled;
 	float2 monoUV = input.TexCoord.xy;

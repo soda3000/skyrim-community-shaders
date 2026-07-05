@@ -14,9 +14,7 @@
 #	include "CloudShadows/CloudShadows.hlsli"
 #endif
 
-#if defined(IBL)
-#	include "IBL/IBL.hlsli"
-#elif defined(SKYLIGHTING)
+#if defined(SKYLIGHTING)
 // sh2 type is needed for the ExtractLighting overload that accepts a visibility SH
 #	include "Common/Spherical Harmonics/SphericalHarmonics.hlsli"
 #endif
@@ -42,7 +40,6 @@ namespace ShadowSampling
 {
 	static const float MinDirectionalLightMultiplier = 1e-5;
 	static const float3 LightingSampleNormal = float3(0, 0, 1);
-	static const float3 ImageBasedLightingNormal = float3(0, 0, -1);
 
 	bool HasDirectionalShadows()
 	{
@@ -144,12 +141,6 @@ namespace ShadowSampling
 	{
 		float3 ambientColor = GetRawAmbientLighting(normal);
 
-#if defined(IBL)
-		if (SharedData::iblSettings.EnableIBL) {
-			ambientColor = ImageBasedLighting::GetDiffuseIBL(ambientColor, ImageBasedLightingNormal);
-		}
-#endif
-
 		return ambientColor;
 	}
 
@@ -158,20 +149,13 @@ namespace ShadowSampling
 	{
 		float3 ambientColor = GetRawAmbientLighting(normal);
 
-#	if defined(IBL)
-		if (SharedData::iblSettings.EnableIBL) {
-			ambientColor = ImageBasedLighting::GetDiffuseIBLOccluded(ambientColor, ImageBasedLightingNormal, skylightingDiffuse);
-		}
-#	endif
-
 		return ambientColor;
 	}
 #endif
 
 	float3 GetDirectionalLighting()
 	{
-		float llDirLightMult = (SharedData::linearLightingSettings.enableLinearLighting && !SharedData::linearLightingSettings.isDirLightLinear) ? SharedData::linearLightingSettings.dirLightMult : 1.0f;
-		return Color::DirectionalLight(SharedData::DirLightColor.xyz / max(llDirLightMult, MinDirectionalLightMultiplier), SharedData::linearLightingSettings.isDirLightLinear) * llDirLightMult;
+		return SharedData::DirLightColor.xyz;
 	}
 
 	float3 GetSceneLightingColor()

@@ -9,10 +9,6 @@
 #include "Common/Skinned.hlsli"
 #define EFFECT
 
-#if !defined(DYNAMIC_CUBEMAPS) && defined(IBL)
-#	undef IBL
-#endif
-
 struct VS_INPUT
 {
 	float4 Position: POSITION0;
@@ -458,10 +454,6 @@ cbuffer PerGeometry : register(b2)
 #		include "Skylighting/Skylighting.hlsli"
 #	endif
 
-#	if defined(IBL)
-#		include "IBL/IBL.hlsli"
-#	endif
-
 #	if defined(EXP_HEIGHT_FOG)
 #		define SampColorSampler SampBaseSampler
 #		include "ExponentialHeightFog/ExponentialHeightFog.hlsli"
@@ -472,16 +464,6 @@ cbuffer PerGeometry : register(b2)
 float3 GetEffectAmbientLighting(float skylightingDiffuse)
 {
 	float3 ambientColor = ShadowSampling::GetRawAmbientLighting(ShadowSampling::LightingSampleNormal);
-
-#	if defined(IBL)
-	if (SharedData::iblSettings.EnableIBL) {
-#		if defined(SKYLIGHTING)
-		ambientColor = ImageBasedLighting::GetDiffuseIBLOccluded(ambientColor, ShadowSampling::ImageBasedLightingNormal, skylightingDiffuse);
-#		else
-		ambientColor = ImageBasedLighting::GetDiffuseIBL(ambientColor, ShadowSampling::ImageBasedLightingNormal);
-#		endif
-	}
-#	endif
 
 	return ambientColor;
 }
@@ -509,7 +491,7 @@ void ExtractEffectLighting(float3 inputColor, out float3 dirColor, out float3 am
 #	if defined(LIGHTING)
 float3 GetLightingColor(float3 msPosition, float3 worldPosition, float2 screenPosition, inout float shadowVariance)
 {
-	float3 color = DLightColor.xyz * Color::EffectLightingMult();
+	float3 color = DLightColor.xyz;
 	bool suppressExternalEmittance = SharedData::InInterior && (Permutation::ExtraShaderDescriptor & Permutation::ExtraFlags::SuppressExternalEmittance);
 	if (suppressExternalEmittance) {
 		color = GetEffectAmbientLighting(1.0) + ShadowSampling::GetDirectionalLighting();
@@ -554,14 +536,9 @@ float3 GetLightingColor(float3 msPosition, float3 worldPosition, float2 screenPo
 #		endif
 
 #		if defined(SKYLIGHTING)
-#			if defined(IBL)
-	if (!SharedData::iblSettings.EnableIBL)
-#			endif
-	{
-		ambientColor = Color::IrradianceToLinear(ambientColor);
-		ambientColor *= skylightingDiffuse;
-		ambientColor = Color::IrradianceToGamma(ambientColor);
-	}
+	ambientColor = Color::IrradianceToLinear(ambientColor);
+	ambientColor *= skylightingDiffuse;
+	ambientColor = Color::IrradianceToGamma(ambientColor);
 #		endif
 
 	color = dirColor + ambientColor;
@@ -572,9 +549,9 @@ float3 GetLightingColor(float3 msPosition, float3 worldPosition, float2 screenPo
 	{
 		float4 lightDistanceSquared = (PLightPositionX[0] - msPosition.xxxx) * (PLightPositionX[0] - msPosition.xxxx) + (PLightPositionY[0] - msPosition.yyyy) * (PLightPositionY[0] - msPosition.yyyy) + (PLightPositionZ[0] - msPosition.zzzz) * (PLightPositionZ[0] - msPosition.zzzz);
 		float4 lightFadeMul = 1.0.xxxx - saturate(PLightingRadiusInverseSquared * lightDistanceSquared);
-		color.x += dot(Color::PointLight(PLightColorR.xxx).x * lightFadeMul * Color::EffectLightingMult(), 1.0.xxxx);
-		color.y += dot(Color::PointLight(PLightColorG.xxx).x * lightFadeMul * Color::EffectLightingMult(), 1.0.xxxx);
-		color.z += dot(Color::PointLight(PLightColorB.xxx).x * lightFadeMul * Color::EffectLightingMult(), 1.0.xxxx);
+		color.x += dot(Color::PointLight(PLightColorR.xxx).x * lightFadeMul, 1.0.xxxx);
+		color.y += dot(Color::PointLight(PLightColorG.xxx).x * lightFadeMul, 1.0.xxxx);
+		color.z += dot(Color::PointLight(PLightColorB.xxx).x * lightFadeMul, 1.0.xxxx);
 	}
 
 	return color;
@@ -719,7 +696,7 @@ PS_OUTPUT main(PS_INPUT input)
 #			endif
 
 			const bool isPointLightLinear = light.lightFlags & LightLimitFix::LightFlags::Linear;
-			float3 lightColor = Color::PointLight(light.color.xyz, isPointLightLinear) * intensityMultiplier * 0.5 * light.fade * Color::EffectLightingMult();
+			float3 lightColor = Color::PointLight(light.color.xyz, isPointLightLinear) * intensityMultiplier * 0.5 * light.fade;
 			propertyColor += lightColor;
 		}
 	}
@@ -824,11 +801,6 @@ PS_OUTPUT main(PS_INPUT input)
 #	if !defined(MOTIONVECTORS_NORMALS)
 	float fogFactor = Color::FogAlpha(input.FogParam.w);
 	float3 fogColor = Color::Fog(input.FogParam.xyz);
-#		if defined(IBL)
-	if (SharedData::iblSettings.EnableIBL) {
-		fogColor = ImageBasedLighting::GetFogIBLColor(fogColor);
-	}
-#		endif
 #		if defined(EXP_HEIGHT_FOG)
 	float vanillaFogFactor = fogFactor;
 	float3 vanillaFogColor = fogColor;
@@ -937,12 +909,6 @@ PS_OUTPUT main(PS_INPUT input)
 	psout.ScreenSpaceNormals.zw = 0.0.xx;
 #	else
 	psout.Color2 = finalColor;
-#	endif
-
-#	if !defined(HDR_OUTPUT)
-	if (!(Permutation::ExtraShaderDescriptor & Permutation::ExtraFlags::InWorld) && SharedData::linearLightingSettings.enableLinearLighting) {
-		psout.Diffuse.xyz = Color::LinearToSrgb(psout.Diffuse.xyz);
-	}
 #	endif
 	return psout;
 }

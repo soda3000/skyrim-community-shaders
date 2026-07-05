@@ -10,12 +10,10 @@
 #include "Features/GrassLighting.h"
 #include "Features/HDRDisplay.h"
 #include "Features/HairSpecular.h"
-#include "Features/IBL.h"
 #include "Features/InteriorSun.h"
 #include "Features/InverseSquareLighting.h"
 #include "Features/LODBlending.h"
 #include "Features/LightLimitFix.h"
-#include "Features/LinearLighting.h"
 #include "Features/PerformanceOverlay.h"
 #include "Features/RemoteControl.h"
 #include "Features/RenderDoc.h"
@@ -60,9 +58,7 @@ namespace globals
 		ExtendedMaterials extendedMaterials{};
 		GrassCollision grassCollision{};
 		GrassLighting grassLighting{};
-		IBL ibl{};
 		LightLimitFix lightLimitFix{};
-		LinearLighting linearLighting{};
 		LODBlending lodBlending{};
 		HairSpecular hairSpecular{};
 		InteriorSun interiorSun{};

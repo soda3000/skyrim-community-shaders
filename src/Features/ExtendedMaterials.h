@@ -12,9 +12,8 @@ struct ExtendedMaterials : Feature
 
 	virtual std::pair<std::string, std::vector<std::string>> GetFeatureSummary() override
 	{
-		return { T("feature.extended_materials.description", "Extended Materials adds advanced material effects including parallax occlusion mapping and complex material blending.\nThis feature enhances surface detail and depth perception for more realistic textures."),
+		return { T("feature.extended_materials.description", "Extended Materials adds advanced material effects including parallax occlusion mapping.\nThis feature enhances surface detail and depth perception for more realistic textures."),
 			{ T("feature.extended_materials.key_feature_1", "Parallax occlusion mapping for depth"),
-				T("feature.extended_materials.key_feature_2", "Complex material blending"),
 				T("feature.extended_materials.key_feature_3", "Terrain heightmap support"),
 				T("feature.extended_materials.key_feature_4", "Parallax shadows"),
 				T("feature.extended_materials.key_feature_5", "Height-based texture blending") } };
@@ -25,8 +24,6 @@ struct ExtendedMaterials : Feature
 
 	struct alignas(16) Settings
 	{
-		uint EnableComplexMaterial = 1;
-
 		uint EnableParallax = 1;
 		uint EnableTerrain = 0;
 		uint EnableHeightBlending = 1;
@@ -35,7 +32,8 @@ struct ExtendedMaterials : Feature
 		uint ExtendShadows = 1;
 		uint EnableParallaxWarpingFix = 1;
 
-		float pad[1];
+		float pad0[1];
+		float pad1[1];
 	};
 	STATIC_ASSERT_ALIGNAS_16(Settings);
 
@@ -44,7 +42,7 @@ struct ExtendedMaterials : Feature
 	/** @brief Enables bLandSpecular INI setting when terrain parallax is active. */
 	virtual void DataLoaded() override;
 
-	/** @brief Draws the ImGui settings UI for complex material, parallax, and shadow options. */
+	/** @brief Draws the ImGui settings UI for parallax, and shadow options. */
 	virtual void DrawSettings() override;
 
 	virtual void LoadSettings(json& o_json) override;

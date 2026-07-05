@@ -13,9 +13,8 @@ cbuffer PerFrame : register(b0)
 	float peakNits : packoffset(c0.z);                  ///< Maximum display brightness in nits for HDR (unused here)
 	float skipUIComposite : packoffset(c0.w);           ///< Unused in this shader
 	float uiBrightness : packoffset(c1.x);              ///< UI brightness multiplier
-	float isSceneLinear : packoffset(c1.y);             ///< Unused in this shader
-	float isMainOrLoadingMenu : packoffset(c1.z);       ///< Unused; layout matches HDRDataCB
-	float fgTweenMenuMidAlphaBoost : packoffset(c1.w);  ///< 1 = TweenMenu open: apply mid-alpha AA boost only for pause UI
+	float isMainOrLoadingMenu : packoffset(c1.y);       ///< Unused; layout matches HDRDataCB
+	float fgTweenMenuMidAlphaBoost : packoffset(c1.z);  ///< 1 = TweenMenu open: apply mid-alpha AA boost only for pause UI
 }
 
 [numthreads(8, 8, 1)] void main(uint3 dispatchID : SV_DispatchThreadID) {

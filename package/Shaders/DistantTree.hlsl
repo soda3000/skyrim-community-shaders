@@ -5,9 +5,6 @@
 #include "Common/Permutation.hlsli"
 #include "Common/Random.hlsli"
 #include "Common/SharedData.hlsli"
-#if !defined(DYNAMIC_CUBEMAPS) && defined(IBL)
-#	undef IBL
-#endif
 
 struct VS_INPUT
 {
@@ -137,10 +134,6 @@ const static float DepthOffsets[16] = {
 #		include "ScreenSpaceShadows/ScreenSpaceShadows.hlsli"
 #	endif
 
-#	if defined(IBL)
-#		include "IBL/IBL.hlsli"
-#	endif
-
 #	if defined(EXP_HEIGHT_FOG)
 #		define SampColorSampler SampDiffuse
 #		include "ExponentialHeightFog/ExponentialHeightFog.hlsli"
@@ -208,8 +201,7 @@ PS_OUTPUT main(PS_INPUT input)
 	if (dirShadow != 0.0)
 		dirShadow *= ShadowSampling::GetWorldShadow(input.WorldPosition.xyz, FrameBuffer::CameraPosAdjust.xyz);
 
-	float llDirLightMult = (SharedData::linearLightingSettings.enableLinearLighting && !SharedData::linearLightingSettings.isDirLightLinear) ? SharedData::linearLightingSettings.dirLightMult : 1.0f;
-	float3 diffuseColor = Color::DirectionalLight(SharedData::DirLightColor.xyz / max(llDirLightMult, 1e-5), SharedData::linearLightingSettings.isDirLightLinear) * dirShadow * 0.5 * llDirLightMult * Color::VanillaNormalization();
+	float3 diffuseColor = SharedData::DirLightColor.xyz * dirShadow * 0.5;
 
 #			if defined(EXP_HEIGHT_FOG)
 	if (SharedData::exponentialHeightFogSettings.enabled) {
@@ -222,11 +214,7 @@ PS_OUTPUT main(PS_INPUT input)
 	float3 normal = -normalize(cross(ddx, ddy));
 
 	float3 directionalAmbientColor = max(0, Color::Ambient(SharedData::GetAmbient(normal)));
-#			if defined(IBL)
-	if (SharedData::iblSettings.EnableIBL) {
-		directionalAmbientColor = ImageBasedLighting::GetDiffuseIBL(directionalAmbientColor, -normal);
-	}
-#			endif
+
 	diffuseColor += directionalAmbientColor;
 
 	psout.Diffuse.xyz = diffuseColor * baseColor.xyz;
@@ -248,8 +236,7 @@ PS_OUTPUT main(PS_INPUT input)
 #		else
 	float dirShadow = ShadowSampling::GetWorldShadow(input.WorldPosition.xyz, FrameBuffer::CameraPosAdjust.xyz);
 
-	float llDirLightMult = (SharedData::linearLightingSettings.enableLinearLighting && !SharedData::linearLightingSettings.isDirLightLinear) ? SharedData::linearLightingSettings.dirLightMult : 1.0f;
-	float3 diffuseColor = Color::DirectionalLight(SharedData::DirLightColor.xyz / max(llDirLightMult, 1e-5), SharedData::linearLightingSettings.isDirLightLinear) * dirShadow * 0.5 * llDirLightMult * Color::VanillaNormalization();
+	float3 diffuseColor = SharedData::DirLightColor.xyz * dirShadow * 0.5;
 
 #			if defined(EXP_HEIGHT_FOG)
 	if (SharedData::exponentialHeightFogSettings.enabled) {
@@ -262,11 +249,7 @@ PS_OUTPUT main(PS_INPUT input)
 	float3 normal = normalize(cross(ddx, ddy));
 
 	float3 directionalAmbientColor = Color::Ambient(SharedData::GetAmbient(normal));
-#			if defined(IBL)
-	if (SharedData::iblSettings.EnableIBL) {
-		directionalAmbientColor = ImageBasedLighting::GetDiffuseIBL(directionalAmbientColor, -normal);
-	}
-#			endif
+
 	diffuseColor += directionalAmbientColor;
 
 	float3 color = diffuseColor * baseColor.xyz;

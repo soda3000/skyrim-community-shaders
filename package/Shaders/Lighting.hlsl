@@ -17,10 +17,6 @@
 #	define SKIN
 #endif
 
-#if !defined(DYNAMIC_CUBEMAPS) && defined(IBL)
-#	undef IBL
-#endif
-
 #if (defined(TREE_ANIM) || defined(LANDSCAPE)) && !defined(VC)
 #	define VC
 #endif  // TREE_ANIM || LANDSCAPE || !VC
@@ -801,10 +797,6 @@ float GetSnowParameterY(float texProjTmp, float alpha)
 #		define EMAT
 #	endif
 
-#	if defined(EMAT) && (defined(ENVMAP) || defined(MULTI_LAYER_PARALLAX) || defined(EYE))
-#		define EMAT_ENVMAP
-#	endif
-
 #	if defined(DYNAMIC_CUBEMAPS)
 #		include "DynamicCubemaps/DynamicCubemaps.hlsli"
 #	endif
@@ -869,10 +861,6 @@ float GetSnowParameterY(float texProjTmp, float alpha)
 #	define LinearSampler SampColorSampler
 
 #	include "Common/ShadowSampling.hlsli"
-
-#	if defined(IBL)
-#		include "IBL/IBL.hlsli"
-#	endif
 
 #	if defined(EXP_HEIGHT_FOG)
 #		include "ExponentialHeightFog/ExponentialHeightFog.hlsli"
@@ -1008,7 +996,6 @@ PS_OUTPUT main(PS_INPUT input, bool frontFace : SV_IsFrontFace)
 	float eta = 1;
 	float3 refractedViewDirection = viewDirection;
 	float4 sampledCoatColor = PBRParams2;
-	float3 complexSpecular = 1.0;  // Declare complexSpecular at a higher scope so it's available throughout the shader (NEEDED FOR STOCH. FIX)
 
 #	if defined(EMAT)
 #		if defined(PARALLAX) && (defined(SKINNED) || !defined(MODELSPACENORMALS))
@@ -1020,43 +1007,9 @@ PS_OUTPUT main(PS_INPUT input, bool frontFace : SV_IsFrontFace)
 	}
 #		endif  // defined(PARALLAX) && (defined(SKINNED) || !defined(MODELSPACENORMALS))
 
-	bool complexMaterial = false;
-	bool complexMaterialParallax = false;
-	float4 complexMaterialColor = 1.0;
-
 #		if defined(ENVMAP) || defined(MULTI_LAYER_PARALLAX) || defined(EYE)
 	float4 envMaskSample = TexEnvMaskSampler.Sample(SampEnvMaskSampler, uv);
 	float envMaskBase = envMaskSample.x;
-	if (SharedData::extendedMaterialSettings.EnableComplexMaterial) {
-		const float kMaskEpsilon = (4.0 / 255.0);
-
-		const float4 mipSample = TexEnvMaskSampler.SampleLevel(SampEnvMaskSampler, uv, 15);
-		complexMaterial = mipSample.w < (1.0 - kMaskEpsilon);
-
-		const bool grayscaleMask = (abs(mipSample.x - mipSample.y) < kMaskEpsilon) &&
-		                           (abs(mipSample.x - mipSample.z) < kMaskEpsilon) &&
-		                           (abs(mipSample.y - mipSample.z) < kMaskEpsilon);
-		// Preserve height-only masks while rejecting grayscale environment masks
-		const bool solidBlackHeightMask = all(mipSample.xyz < kMaskEpsilon) &&
-		                                  mipSample.w > kMaskEpsilon &&
-		                                  mipSample.w < (1.0 - kMaskEpsilon);
-		if (grayscaleMask && !solidBlackHeightMask)
-			complexMaterial = false;
-
-		if (complexMaterial) {
-			if (envMaskSample.w > kMaskEpsilon && envMaskSample.w < (1.0 - kMaskEpsilon)) {
-				complexMaterialParallax = true;
-				mipLevel = ExtendedMaterials::GetMipLevel(uv, TexEnvMaskSampler, screenNoise);
-				uv = ExtendedMaterials::GetParallaxCoords(viewPosition.z, uv, mipLevel, viewDirection, tbnTr, screenNoise, TexEnvMaskSampler, SampTerrainParallaxSampler, 3, displacementParams, pixelOffset);
-				if (SharedData::extendedMaterialSettings.EnableShadows && (parallaxShadowQuality > 0.0f || SharedData::extendedMaterialSettings.ExtendShadows))
-					sh0 = TexEnvMaskSampler.SampleLevel(SampEnvMaskSampler, uv, mipLevel).w;
-				complexMaterialColor = TexEnvMaskSampler.Sample(SampEnvMaskSampler, uv);
-			} else {
-				complexMaterialColor = envMaskSample;
-			}
-			envMaskBase = complexMaterialColor.x;
-		}
-	}
 #		endif  // ENVMAP
 
 #		if defined(TRUE_PBR) && !defined(LANDSCAPE) && !defined(LODLANDSCAPE)
@@ -1866,27 +1819,10 @@ PS_OUTPUT main(PS_INPUT input, bool frontFace : SV_IsFrontFace)
 #		endif  // SNOW
 #	endif      // LANDSCAPE
 
-#	if defined(EMAT_ENVMAP)
-	complexMaterial = complexMaterial && complexMaterialColor.y > (4.0 / 255.0);
-	shininess = lerp(shininess, shininess * complexMaterialColor.y, complexMaterial);
-	if (complexMaterial) {
-		complexSpecular = lerp(1.0, baseColor.xyz, complexMaterialColor.z);
-		baseColor.xyz = lerp(baseColor.xyz, 0.0, complexMaterialColor.z);
-	}
-#	endif  // defined (EMAT) && defined(ENVMAP)
-
 #	if defined(FACEGEN)
-	if (!SharedData::linearLightingSettings.enableLinearLighting) {
-		baseColor.xyz = GetFacegenBaseColor(baseColor.xyz, uv);
-	} else {
-		baseColor.xyz = Color::SkyrimGammaToLinear(GetFacegenBaseColor(Color::LinearToSkyrimGamma(baseColor.xyz), uv));
-	}
+	baseColor.xyz = GetFacegenBaseColor(baseColor.xyz, uv);
 #	elif defined(FACEGEN_RGB_TINT)
-	if (!SharedData::linearLightingSettings.enableLinearLighting) {
-		baseColor.xyz = GetFacegenRGBTintBaseColor(baseColor.xyz, uv);
-	} else {
-		baseColor.xyz = Color::SkyrimGammaToLinear(GetFacegenRGBTintBaseColor(Color::LinearToSkyrimGamma(baseColor.xyz), uv));
-	}
+	baseColor.xyz = GetFacegenRGBTintBaseColor(baseColor.xyz, uv);
 #	endif  // FACEGEN
 
 #	if defined(SKIN) && defined(CS_SKIN)
@@ -2175,14 +2111,9 @@ PS_OUTPUT main(PS_INPUT input, bool frontFace : SV_IsFrontFace)
 	float pbrVertexAO = max(max(pbrVertexColor.x, pbrVertexColor.y), pbrVertexColor.z);
 	pbrVertexColor = pbrVertexAO == 0.0f ? 1.0f : pbrVertexColor * lerp(1 / max(pbrVertexAO, 0.001), 1, SharedData::truePBRSettings.VertexAOStrength);
 
-	if (!SharedData::linearLightingSettings.enableLinearLighting) {
-		baseColor.xyz = Color::SrgbToLinear(baseColor.xyz) * pbrVertexColor;
-		material.F0 = lerp(rawRMAOS.w, baseColor.xyz, material.Metallic);
-		baseColor.xyz = Color::LinearToSrgb(baseColor.xyz);
-	} else {
-		baseColor.xyz *= pbrVertexColor;
-		material.F0 = lerp(rawRMAOS.w, baseColor.xyz, material.Metallic);
-	}
+	baseColor.xyz = Color::SrgbToLinear(baseColor.xyz) * pbrVertexColor;
+	material.F0 = lerp(rawRMAOS.w, baseColor.xyz, material.Metallic);
+	baseColor.xyz = Color::LinearToSrgb(baseColor.xyz);
 
 	material.GlintScreenSpaceScale = max(1, glintParameters.x);
 	material.GlintLogMicrofacetDensity = clamp(PBR::Constants::MaxGlintDensity - glintParameters.y, PBR::Constants::MinGlintDensity, PBR::Constants::MaxGlintDensity);
@@ -2212,12 +2143,8 @@ PS_OUTPUT main(PS_INPUT input, bool frontFace : SV_IsFrontFace)
 			// If LL is off, Diffuse returns sRGB
 			material.SubsurfaceColor *= Color::Diffuse(sampledSubsurfaceProperties.xyz);
 
-			if (!SharedData::linearLightingSettings.enableLinearLighting) {
-				material.SubsurfaceColor = Color::LinearToSrgb(
-					Color::SrgbToLinear(material.SubsurfaceColor) * pbrVertexColor);
-			} else {
-				material.SubsurfaceColor *= pbrVertexColor;
-			}
+			material.SubsurfaceColor = Color::LinearToSrgb(
+				Color::SrgbToLinear(material.SubsurfaceColor) * pbrVertexColor);
 
 			material.Thickness *= sampledSubsurfaceProperties.w;
 		}
@@ -2346,22 +2273,13 @@ PS_OUTPUT main(PS_INPUT input, bool frontFace : SV_IsFrontFace)
 		uint2 envSize;
 		TexEnvSampler.GetDimensions(envSize.x, envSize.y);
 
-#			if defined(EMAT)
-		if (envSize.x == 1 && envSize.y == 1 || complexMaterial) {
-#			else
 		if (envSize.x == 1 && envSize.y == 1) {
-#			endif
 
 			dynamicCubemap = true;
 
-#			if defined(EMAT)
-			if (!complexMaterial)
-#			endif
-			{
-				// Dynamic Cubemap Creator sets this value to black, if it is anything but black it is wrong
-				float3 envColorTest = TexEnvSampler.SampleLevel(SampEnvSampler, float3(0.0, 1.0, 0.0), 15).xyz;
-				dynamicCubemap = all(envColorTest == 0.0);
-			}
+			// Dynamic Cubemap Creator sets this value to black, if it is anything but black it is wrong
+			float3 envColorTest = TexEnvSampler.SampleLevel(SampEnvSampler, float3(0.0, 1.0, 0.0), 15).xyz;
+			dynamicCubemap = all(envColorTest == 0.0);
 
 #			if defined(CREATOR)
 			if (SharedData::cubemapCreatorSettings.Enabled) {
@@ -2385,12 +2303,6 @@ PS_OUTPUT main(PS_INPUT input, bool frontFace : SV_IsFrontFace)
 					material.F0 = SharedData::cubemapCreatorSettings.CubemapColor.rgb;
 					material.Roughness = SharedData::cubemapCreatorSettings.CubemapColor.a;
 				}
-#			endif
-
-#			if defined(EMAT)
-				float complexMaterialRoughness = 1.0 - complexMaterialColor.y;
-				material.Roughness = lerp(material.Roughness, complexMaterialRoughness, complexMaterial);
-				material.F0 = lerp(material.F0, complexSpecular, complexMaterial);
 #			endif
 			}
 		}
@@ -2530,8 +2442,7 @@ PS_OUTPUT main(PS_INPUT input, bool frontFace : SV_IsFrontFace)
 	waterRoughnessSpecular = max(saturate(1.0 - wetnessGlossinessSpecular), wetnessMinPuddleRoughness);
 #	endif
 
-	float llDirLightMult = SharedData::linearLightingSettings.enableLinearLighting && !SharedData::linearLightingSettings.isDirLightLinear && (inWorld || inReflection) && !SharedData::InInterior ? SharedData::linearLightingSettings.dirLightMult : 1.0f;
-	float3 dirLightColor = Color::DirectionalLight(DirLightColor.xyz / max(llDirLightMult, 1e-5), SharedData::linearLightingSettings.isDirLightLinear) * llDirLightMult;
+	float3 dirLightColor = DirLightColor.xyz;
 
 #	if defined(EXP_HEIGHT_FOG)
 	if (SharedData::exponentialHeightFogSettings.enabled) {
@@ -2609,9 +2520,6 @@ PS_OUTPUT main(PS_INPUT input, bool frontFace : SV_IsFrontFace)
 #		elif defined(PARALLAX)
 		[branch] if (SharedData::extendedMaterialSettings.EnableParallax)
 			dirDetailedShadow *= ExtendedMaterials::GetParallaxSoftShadowMultiplier(uv, mipLevel, dirLightDirectionTS, sh0, TexParallaxSampler, SampParallaxSampler, 0, lerp(parallaxShadowQuality, 1.0, SharedData::extendedMaterialSettings.ExtendShadows), screenNoise, displacementParams);
-#		elif defined(EMAT_ENVMAP)
-		[branch] if (complexMaterialParallax)
-			dirDetailedShadow *= ExtendedMaterials::GetParallaxSoftShadowMultiplier(uv, mipLevel, dirLightDirectionTS, sh0, TexEnvMaskSampler, SampEnvMaskSampler, 3, lerp(parallaxShadowQuality, 1.0, SharedData::extendedMaterialSettings.ExtendShadows), screenNoise, displacementParams);
 #		elif defined(TRUE_PBR) && !defined(LODLANDSCAPE) && !defined(FACEGEN)
 		[branch] if (PBRParallax)
 			dirDetailedShadow *= ExtendedMaterials::GetParallaxSoftShadowMultiplier(uv, mipLevel, dirLightDirectionTS, sh0, TexParallaxSampler, SampParallaxSampler, 0, lerp(parallaxShadowQuality, 1.0, SharedData::extendedMaterialSettings.ExtendShadows), screenNoise, displacementParams);
@@ -2813,9 +2721,6 @@ PS_OUTPUT main(PS_INPUT input, bool frontFace : SV_IsFrontFace)
 #					else
 				parallaxShadow = ExtendedMaterials::GetParallaxSoftShadowMultiplierTerrain(input, uv, mipLevels, lightDirectionTS, sh0, parallaxShadowQuality, screenNoise, displacementParams);
 #					endif
-#				elif defined(EMAT_ENVMAP)
-			[branch] if (complexMaterialParallax)
-				parallaxShadow = ExtendedMaterials::GetParallaxSoftShadowMultiplier(uv, mipLevel, lightDirectionTS, sh0, TexEnvMaskSampler, SampEnvMaskSampler, 3, parallaxShadowQuality, screenNoise, displacementParams);
 #				elif defined(TRUE_PBR) && !defined(LODLANDSCAPE) && !defined(FACEGEN)
 			[branch] if (PBRParallax)
 				parallaxShadow = ExtendedMaterials::GetParallaxSoftShadowMultiplier(uv, mipLevel, lightDirectionTS, sh0, TexParallaxSampler, SampParallaxSampler, 0, parallaxShadowQuality, screenNoise, displacementParams);
@@ -2885,23 +2790,15 @@ PS_OUTPUT main(PS_INPUT input, bool frontFace : SV_IsFrontFace)
 		float emitVertexAO = max(max(emitVertexColor.r, emitVertexColor.g), emitVertexColor.b);
 		emitVertexColor = emitVertexAO == 0.0f ? 1.0f : emitVertexColor * lerp(1 / max(emitVertexAO, 1e-4), 1, SharedData::truePBRSettings.VertexAOStrength);
 
-		if (!SharedData::linearLightingSettings.enableLinearLighting) {
-			emitColor = Color::SrgbToLinear(emitColor);
-			glowColor = Color::SrgbToLinear(glowColor);
-			emitColor *= glowColor;
-			emitColor *= emitVertexColor;
-			emitColor = Color::LinearToSrgb(emitColor);
-		} else {
-			emitColor *= glowColor;
-			emitColor *= emitVertexColor;
-		}
-#		else
-		if (!SharedData::linearLightingSettings.enableLinearLighting) {
-			emitColor = Color::LinearToSrgb(Color::SrgbToLinear(emitColor) * Color::SrgbToLinear(glowColor));
-		} else {
-			emitColor *= glowColor;
-		}
-#		endif  // TRUE_PBR
+		emitColor = Color::SrgbToLinear(emitColor);
+		glowColor = Color::SrgbToLinear(glowColor);
+		emitColor *= glowColor;
+		emitColor *= emitVertexColor;
+		emitColor = Color::LinearToSrgb(emitColor);
+
+#		else	// (!TRUE_PBR)
+		emitColor = Color::LinearToSrgb(Color::SrgbToLinear(emitColor) * Color::SrgbToLinear(glowColor));
+#		endif	// TRUE_PBR
 	}
 #	endif
 
@@ -2924,14 +2821,6 @@ PS_OUTPUT main(PS_INPUT input, bool frontFace : SV_IsFrontFace)
 #	endif
 
 	float3 directionalAmbientColor = Color::Ambient(max(0, SharedData::GetAmbient(ambientNormal)));
-
-#	if defined(IBL)
-	if (SharedData::iblSettings.EnableIBL) {
-		if (SharedData::iblSettings.UseStaticIBL && !inWorld && !inReflection) {
-			directionalAmbientColor = ImageBasedLighting::GetStaticDiffuseIBL(ambientNormal, SampColorSampler);
-		}
-	}
-#	endif
 
 #	if defined(SKYLIGHTING)
 	float skylightingDiffuse = 1;
@@ -2973,18 +2862,6 @@ PS_OUTPUT main(PS_INPUT input, bool frontFace : SV_IsFrontFace)
 #		endif
 	float vertexAO = Color::ColorToLinear(max(max(vertexColor.r, vertexColor.g), vertexColor.b).xxx).x;
 #	endif  // defined (HAIR)
-
-#	if defined(IBL)
-	if (SharedData::iblSettings.EnableIBL) {
-		if (!(SharedData::iblSettings.UseStaticIBL && !inWorld && !inReflection)) {
-#		if defined(SKYLIGHTING)
-			directionalAmbientColor = ImageBasedLighting::GetDiffuseIBLOccluded(directionalAmbientColor, -ambientNormal, skylightingDiffuse);
-#		else
-			directionalAmbientColor = ImageBasedLighting::GetDiffuseIBL(directionalAmbientColor, -ambientNormal);
-#		endif
-		}
-	}
-#	endif
 
 	float3 reflectionDiffuseColor = diffuseColor + directionalAmbientColor;
 
@@ -3097,10 +2974,6 @@ PS_OUTPUT main(PS_INPUT input, bool frontFace : SV_IsFrontFace)
 	indirectLobeWeights.diffuse += envColor;
 #	endif
 
-#	if defined(EMAT_ENVMAP)
-	specularColor *= complexSpecular;
-#	endif  // defined (EMAT) && defined(ENVMAP)
-
 #	if defined(LOD_LAND_BLEND) && defined(TRUE_PBR)
 	{
 		lodLandDiffuseColor += directionalAmbientColor;
@@ -3123,12 +2996,7 @@ PS_OUTPUT main(PS_INPUT input, bool frontFace : SV_IsFrontFace)
 	directionalAmbientColor *= outputAlbedo;
 
 #	if defined(SKYLIGHTING)
-#		if defined(IBL)
-	if (!SharedData::iblSettings.EnableIBL)
-#		endif
-	{
-		Skylighting::ApplySkylighting(color.xyz, directionalAmbientColor, outputAlbedo, skylightingDiffuse);
-	}
+	Skylighting::ApplySkylighting(color.xyz, directionalAmbientColor, outputAlbedo, skylightingDiffuse);
 #	endif
 
 #	if !defined(DEFERRED)
@@ -3161,11 +3029,6 @@ PS_OUTPUT main(PS_INPUT input, bool frontFace : SV_IsFrontFace)
 	color.xyz = Color::IrradianceToGamma(color.xyz);
 	float3 fogColor = Color::Fog(input.FogParam.xyz);
 	float fogFactor = Color::FogAlpha(input.FogParam.w);
-#		if defined(IBL)
-	if (SharedData::iblSettings.EnableIBL) {
-		fogColor = ImageBasedLighting::GetFogIBLColor(fogColor);
-	}
-#		endif
 #		if defined(EXP_HEIGHT_FOG)
 	float3 vanillaFogColor = fogColor;
 	float vanillaFogFactor = fogFactor;
@@ -3385,12 +3248,6 @@ PS_OUTPUT main(PS_INPUT input, bool frontFace : SV_IsFrontFace)
 
 	float stochasticBlend = (screenNoise * screenNoise) < psout.Diffuse.w ? 1.0 : 0.0;
 	psout.NormalGlossiness.w = stochasticBlend;
-#	endif
-
-#	if !defined(HDR_OUTPUT)  // Do not apply gamma correction before we pass to ISHDR.
-	if ((!inWorld && !inReflection) && SharedData::linearLightingSettings.enableLinearLighting && !(Permutation::PixelShaderDescriptor & Permutation::LightingFlags::DefShadow)) {
-		psout.Diffuse.xyz = Color::LinearToSrgb(psout.Diffuse.xyz);
-	}
 #	endif
 
 	return psout;

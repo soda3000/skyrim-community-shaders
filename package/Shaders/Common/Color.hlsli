@@ -4,16 +4,6 @@
 #include "Common/Math.hlsli"
 #include "Common/SharedData.hlsli"
 
-#define ENABLE_LL SharedData::linearLightingSettings.enableLinearLighting
-
-#if defined(PSHADER) && defined(LIGHTING)
-cbuffer LLPerGeometry : register(b8)
-{
-	float emissiveMult;
-	float3 pad0;
-};
-#endif
-
 // Float limits
 #define FLT_MIN asfloat(0x00800000)  // 1.175494351e-38f
 #define FLT_MAX asfloat(0x7F7FFFFF)  // 3.402823466e+38f
@@ -177,36 +167,24 @@ namespace Color
 
 #if defined(PSHADER) || defined(CSHADER) || defined(COMPUTESHADER)
 	// Attempt to match vanilla materials that are darker than PBR
-	const static float PBRLightingScale = ENABLE_LL ? 1.0 : 0.65;
+	const static float PBRLightingScale = 1.0;
 
 	// Attempt to normalise reflection brightness against DALC
-	const static float ReflectionNormalisationScale = ENABLE_LL ? 1.0 : 0.65;
+	const static float ReflectionNormalisationScale = 1.0;
 
-	const static float PBRLightingCompensation = ENABLE_LL ? 1.0 : Math::PI;
-
-	// Linear Lighting Functions
-	float3 LLGammaToLinear(float3 color)
-	{
-		return ENABLE_LL ? SkyrimGammaToLinear(color) : color;
-	}
-
-	float3 LLLinearToGamma(float3 color)
-	{
-		return ENABLE_LL ? LinearToSkyrimGamma(color) : color;
-	}
+	const static float PBRLightingCompensation = Math::PI;
 
 	float3 Diffuse(float3 color)
 	{
 #	if defined(TRUE_PBR)
-		return ENABLE_LL ? color : LinearToSrgb(color);
+		return LinearToSrgb(color);
 #	else
-		return ENABLE_LL ? pow(abs(color), SharedData::linearLightingSettings.colorGamma) * SharedData::linearLightingSettings.vanillaDiffuseColorMult : color;
+		return color;
 #	endif
 	}
 
 	float3 Light(float3 color, bool isLinear = false)
 	{
-		color = (ENABLE_LL && !isLinear) ? pow(abs(color), SharedData::linearLightingSettings.lightGamma) : color;
 #	if defined(TRUE_PBR)
 		return color * PBRLightingCompensation;  // Compensate for traditional Lambertian diffuse
 #	else
@@ -216,132 +194,118 @@ namespace Color
 
 	float3 DirectionalLight(float3 color, bool isLinear = false)
 	{
-		return Light(color, isLinear) *
-		       ((ENABLE_LL && !isLinear) ? Math::PI * SharedData::linearLightingSettings.directionalLightMult : 1.0f);
+		return Light(color, isLinear);
 	}
 
 	float3 PointLight(float3 color, bool isLinear = false)
 	{
-		return Light(color, isLinear) *
-		       ((ENABLE_LL && !isLinear) ? Math::PI * SharedData::linearLightingSettings.pointLightMult : 1.0f);
+		return Light(color, isLinear);
 	}
+
 #	if defined(LIGHTING)
 	float3 EmitColor(float3 color)
 	{
-		return ENABLE_LL ? (pow(abs(color / max(emissiveMult, 1e-5)), SharedData::linearLightingSettings.emitColorGamma) * emissiveMult * SharedData::linearLightingSettings.emitColorMult) : color;
+		return color;
 	}
 #	endif
 
 	float3 Glowmap(float3 color)
 	{
 #	if defined(TRUE_PBR)
-		return ENABLE_LL ? color * SharedData::linearLightingSettings.glowmapMult : LinearToSrgb(color);
+		return LinearToSrgb(color);
 #	else
-		return ENABLE_LL ? pow(abs(color), SharedData::linearLightingSettings.glowmapGamma) * SharedData::linearLightingSettings.glowmapMult : color;
+		return color;
 #	endif
 	}
 
 	float3 Ambient(float3 color)
 	{
-		return ENABLE_LL ? pow(abs(color), SharedData::linearLightingSettings.ambientGamma) * SharedData::linearLightingSettings.ambientMult : color;
+		return color;
 	}
 
 	float3 Fog(float3 color)
 	{
-		return ENABLE_LL ? pow(abs(color), SharedData::linearLightingSettings.fogGamma) : color;
+		return color;
 	}
 
 	float FogAlpha(float alpha)
 	{
-		return ENABLE_LL ? pow(abs(alpha), SharedData::linearLightingSettings.fogAlphaGamma) : alpha;
+		return alpha;
 	}
 
 	float3 Effect(float3 color)
 	{
-		return ENABLE_LL ? pow(abs(color), SharedData::linearLightingSettings.effectGamma) : color;
+		return color;
 	}
 
 	float3 EffectMult(float3 color)
 	{
-		if (ENABLE_LL) {
-#	if defined(MEMBRANE)
-			color *= SharedData::linearLightingSettings.membraneEffectMult;
-#	elif defined(BLOOD)
-			color *= SharedData::linearLightingSettings.bloodEffectMult;
-#	elif defined(PROJECTED_UV)
-			color *= SharedData::linearLightingSettings.projectedEffectMult;
-#	elif defined(DEFERRED)
-			color *= SharedData::linearLightingSettings.deferredEffectMult;
-#	else
-			color *= SharedData::linearLightingSettings.otherEffectMult;
-#	endif
-		}
 		return color;
 	}
 
 	float EffectLightingMult()
 	{
-		return ENABLE_LL ? SharedData::linearLightingSettings.effectLightingMult : 1.0f;
+		return 1.0f;
 	}
 
 	float EffectAlpha(float alpha)
 	{
-		return ENABLE_LL ? pow(abs(alpha), SharedData::linearLightingSettings.effectAlphaGamma) : alpha;
+		return alpha;
 	}
 
 	float3 Sky(float3 color)
 	{
-		return ENABLE_LL ? pow(abs(color), SharedData::linearLightingSettings.skyGamma) : color;
+		return color;
 	}
 
 	float3 Water(float3 color)
 	{
-		return ENABLE_LL ? pow(abs(color), SharedData::linearLightingSettings.waterGamma) : color;
+		return color;
 	}
 
 	float3 VolumetricLighting(float3 color)
 	{
-		return ENABLE_LL ? pow(abs(color), SharedData::linearLightingSettings.vlGamma) : color;
+		return color;
 	}
 
 	float3 ColorToLinear(float3 color)
 	{
-		return ENABLE_LL ? pow(abs(color), SharedData::linearLightingSettings.colorGamma) : color;
+		return color;
 	}
 
 	float3 RadianceToLinear(float3 color)
 	{
-		return ENABLE_LL ? color : SkyrimGammaToLinear(color);
+		return SkyrimGammaToLinear(color);
 	}
 
 	float IrradianceToLinear(float color)
 	{
-		return ENABLE_LL ? color : SkyrimGammaToLinear(color);
+		return SkyrimGammaToLinear(color);
 	}
 
 	float IrradianceToGamma(float color)
 	{
-		return ENABLE_LL ? color : LinearToSkyrimGamma(color);
+		return LinearToSkyrimGamma(color);
 	}
 
 	float3 IrradianceToLinear(float3 color)
 	{
-		return ENABLE_LL ? color : SkyrimGammaToLinear(color);
+		return SkyrimGammaToLinear(color);
 	}
 
 	float3 IrradianceToGamma(float3 color)
 	{
-		return ENABLE_LL ? color : LinearToSkyrimGamma(color);
+		return LinearToSkyrimGamma(color);
 	}
 
 	float VanillaNormalization()
 	{
-		return ENABLE_LL ? 1.0 / Math::PI : 1.0f;
+		return 1.0f;
 	}
 
 	float VanillaDiffuseColorMult()
 	{
-		return ENABLE_LL ? SharedData::linearLightingSettings.vanillaDiffuseColorMult : 1.0f;
+		return 1.0f;
 	}
 #else
 	const static float PBRLightingScale = 1.0;

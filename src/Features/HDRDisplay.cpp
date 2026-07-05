@@ -5,7 +5,6 @@
 #include "Buffer.h"
 #include "Globals.h"
 #include "I18n/I18n.h"
-#include "LinearLighting.h"
 #include "Menu.h"
 #include "ShaderCache.h"
 #include "State.h"
@@ -1594,10 +1593,6 @@ HDRDisplay::HDRDataCB HDRDisplay::BuildHDRData() const
 	auto* ui = globals::game::ui;
 	bool skipUIComposite = IsFGCompositingThisFrame();
 
-	// Linear Lighting keeps the pipeline linear throughout.
-	// Without it, ISHDR gamma-encodes its output even in HDR mode.
-	bool isSceneLinear = globals::features::linearLighting.settings.enableLinearLighting;
-
 	// Use user-specified peak brightness for highlights compression
 	float effectivePeakNits = static_cast<float>(settings.hdrPeakNits);
 
@@ -1607,8 +1602,7 @@ HDRDisplay::HDRDataCB HDRDisplay::BuildHDRData() const
 	data.peakNits = effectivePeakNits;
 	data.skipUIComposite = skipUIComposite ? 1.f : 0.f;
 	data.uiBrightness = settings.hdrUIBrightness;
-	data.isSceneLinear = isSceneLinear ? 1.f : 0.f;
-	data.pad0 = isMainOrLoadingMenu ? 1.f : 0.f;
+	data.isMainOrLoadingMenu = isMainOrLoadingMenu ? 1.f : 0.f;
 	// TweenMenu = pause UI. ScaleUIBrightnessForFG skips while GameIsPaused(), so HDROutputCS applies the same mid-alpha boost when compositing gamma UI.
 	data.fgTweenMenuMidAlphaBoost = (ui && ui->IsMenuOpen(RE::TweenMenu::MENU_NAME)) ? 1.f : 0.f;
 	data.previewSDR = 0.f;

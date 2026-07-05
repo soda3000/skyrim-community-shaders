@@ -96,7 +96,6 @@ To create feature-specific overrides, you need to use the correct feature short 
 -   `GrassCollision` - Grass Collision
 -   `GrassLighting` - Grass Lighting
 -   `HairSpecular` - Hair Specular
--   `IBL` - Image-Based Lighting
 -   `LightLimitFix` - Light Limit Fix
 -   `LODBlending` - LOD Blending
 -   `InteriorSun` - Interior Sun

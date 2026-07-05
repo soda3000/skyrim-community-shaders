@@ -1,6 +1,5 @@
 #include "LightLimitFix.h"
 #include "InverseSquareLighting.h"
-#include "LinearLighting.h"
 
 #include "I18n/I18n.h"
 #include "Menu/ThemeManager.h"
