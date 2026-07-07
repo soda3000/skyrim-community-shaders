@@ -26,6 +26,11 @@ namespace DynamicCubemaps
 		float3 R = reflect(-V, N);
 		float NoV = saturate(dot(N, V));
 
+		// [Lagarde & de Rousiers 2014, "Moving Frostbite to PBR"]
+		// Off-specular peak: the GGX lobe's dominant direction bends toward the normal as roughness increases
+		float alpha = roughness * roughness;
+		R = normalize(lerp(N, R, (1.0 - alpha) * (sqrt(1.0 - alpha) + alpha)));
+
 		float level = roughness * 7.0;
 
 		float3 finalIrradiance = 0;
@@ -89,6 +94,11 @@ namespace DynamicCubemaps
 #	else
 		float3 R = reflect(-V, N);
 		float NoV = saturate(dot(N, V));
+
+		// [Lagarde & de Rousiers 2014, "Moving Frostbite to PBR"]
+		// Off-specular peak: the GGX lobe's dominant direction bends toward the normal as roughness increases
+		float alpha = roughness * roughness;
+		R = normalize(lerp(N, R, (1.0 - alpha) * (sqrt(1.0 - alpha) + alpha)));
 
 		float level = roughness * 7.0;
 

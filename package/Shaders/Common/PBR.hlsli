@@ -253,7 +253,7 @@ namespace PBR
 			}
 #endif
 			float2 specularBRDF = BRDF::EnvBRDF(material.Roughness, NdotV);
-			lobeWeights.specular = material.F0 * specularBRDF.x + specularBRDF.y;
+			lobeWeights.specular = BRDF::EnvBRDFMultiScatter(material.F0, specularBRDF);
 
 			// Energy conservation: diffuse receives only what specular does not reflect
 			lobeWeights.diffuse *= 1 - lobeWeights.specular;
@@ -262,7 +262,7 @@ namespace PBR
 			[branch] if ((PBRFlags & Flags::TwoLayer) != 0)
 			{
 				float2 coatSpecularBRDF = BRDF::EnvBRDF(material.CoatRoughness, NdotV);
-				float3 coatSpecularLobeSpecular = material.CoatF0 * coatSpecularBRDF.x + coatSpecularBRDF.y;
+				float3 coatSpecularLobeSpecular = BRDF::EnvBRDFMultiScatter(material.CoatF0, coatSpecularBRDF);
 
 				float3 layerAttenuation = 1 - coatSpecularLobeSpecular * material.CoatStrength;
 				lobeWeights.diffuse *= layerAttenuation;
@@ -282,6 +282,11 @@ namespace PBR
 		lobeWeights.diffuse *= MultiBounceAO(material.BaseColor, material.AO);
 		float alpha = material.Roughness * material.Roughness;
 		lobeWeights.specular *= SpecularOcclusion(NdotV, alpha, material.AO);
+
+		// Horizon occlusion: fade reflections whose vector dips below the geometric surface
+		float3 R = reflect(-V, N);
+		float horizon = saturate(1.0 + dot(R, context.vertexNormal));
+		lobeWeights.specular *= horizon * horizon;
 	}
 }
 

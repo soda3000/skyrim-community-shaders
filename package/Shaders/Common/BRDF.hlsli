@@ -303,11 +303,22 @@ namespace BRDF
 
 	float2 EnvBRDF(float roughness, float NdotV)
 	{
-#if defined(ENV_BRDF_HIRVONEN)
-		return EnvBRDFApproxHirvonen(roughness, NdotV);
-#else
+#if defined(ENV_BRDF_LAZAROV)
 		return EnvBRDFApproxLazarov(roughness, NdotV);
+#else
+		return EnvBRDFApproxHirvonen(roughness, NdotV);
 #endif
+	}
+
+	// [Fdez-Aguera 2019, "A Multiple-Scattering Microfacet Model for Real-Time Image-Based Lighting"]
+	// Compensates for energy lost by single-scattering GGX at high roughness.
+	float3 EnvBRDFMultiScatter(float3 F0, float2 envBRDF)
+	{
+		float3 FssEss = F0 * envBRDF.x + envBRDF.y;
+		float Ess = envBRDF.x + envBRDF.y;
+		float3 Favg = F0 + (1.0 - F0) / 21.0;
+		float3 Fms = FssEss * Favg / (1.0 - (1.0 - Ess) * Favg);
+		return FssEss + Fms * (1.0 - Ess);
 	}
 }
 

@@ -159,6 +159,12 @@ void SampleSSGISpecular(uint2 pixCoord, sh2 lobe, inout float ao, out float3 il,
 		float3 R = reflect(-V, normalWS);
 
 		float roughness = 1.0 - glossiness;
+
+		// [Lagarde & de Rousiers 2014, "Moving Frostbite to PBR"]
+		// Off-specular peak: the GGX lobe's dominant direction bends toward the normal as roughness increases
+		float alpha = roughness * roughness;
+		R = normalize(lerp(normalWS, R, (1.0 - alpha) * (sqrt(1.0 - alpha) + alpha)));
+
 		float level = roughness * 7.0;
 
 		sh2 specularLobe = SphericalHarmonics::FauxSpecularLobe(normalWS, V, roughness);

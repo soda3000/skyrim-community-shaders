@@ -177,7 +177,12 @@ void GetIndirectLobeWeights(out IndirectLobeWeights lobeWeights, IndirectContext
 		float NdotV = saturate(dot(N, V));
 
 		float2 specularBRDF = BRDF::EnvBRDF(material.Roughness, NdotV);
-		lobeWeights.specular = material.F0 * specularBRDF.x + specularBRDF.y;
+		lobeWeights.specular = BRDF::EnvBRDFMultiScatter(material.F0, specularBRDF);
+
+		// Horizon occlusion: fade reflections whose vector dips below the geometric surface
+		float3 R = reflect(-V, N);
+		float horizon = saturate(1.0 + dot(R, VN));
+		lobeWeights.specular *= horizon * horizon;
 	}
 #	endif
 #endif
